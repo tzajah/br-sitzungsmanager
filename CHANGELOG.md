@@ -10,14 +10,15 @@ veröffentlichten Releases).
 ## [0.38.0] – 2026-09-12 – Öffentliche Fassung
 
 ### Geändert
-- **Die Datei `key` heißt durchgehend Cryptodatei.** Sie belegt keinen Anspruch auf
-  Nutzung, sondern allein, dass derselbe Hauptschlüssel vorliegt wie in `br-zugang.js`.
-  Das erzeugende Werkzeug heißt deshalb **Verschlüsselungsgenerator**, der Marker in
-  `key` lautet `br-sitzungsmanager/key`, und im Code stehen `KEY_MARKER`, `KEY_FEHLER`
-  und `keyGueltig()`. Die Krypto-Mechanik ist unverändert; geändert hat sich allein die
-  Benennung. **Achtung:** Wegen des neuen Markers passen `key`-Dateien aus früheren
-  Fassungen nicht mehr; sie müssen einmal neu erzeugt werden, was mit demselben
-  Passwortsatz und ohne Datenverlust geht.
+- **Die Datei `key` entfällt; `br-zugang.js` ist allein maßgeblich.** Sie hat nie einen
+  Anspruch auf Nutzung belegt, sondern allein, dass derselbe Hauptschlüssel vorliegt wie
+  in `br-zugang.js` – eine zweite Datei also, die dasselbe nachweist wie die erste. Sie
+  kostete einen weiteren Kopierschritt bei der Einrichtung und bot einen weiteren Weg,
+  sich auszusperren, ohne die Daten zusätzlich zu schützen. Das leisten allein die
+  Passwörter. Entfernt sind damit: das Laden von `scripts/key` in beiden Modulen, die
+  beiden Sperren beim Start, der Knopf zum Erzeugen im Debug-Panel und die Erzeugung im
+  Generator. **Wer von einer früheren Fassung kommt**, löscht `scripts/key` einfach;
+  daran hängen keine Daten, und die Sicherungen bleiben unverändert lesbar.
 - **Das Kennfeld in der Seitenleiste trägt keinen festen Firmennamen mehr.** Es zeigt
   jetzt Gremium und Firma aus den Stammdaten – dieselbe Schreibweise, die die
   PDF-Kopfzeilen der Beschluss- und Aufgabenübersicht seit je verwenden. Solange keine
@@ -30,7 +31,7 @@ veröffentlichten Releases).
 - **Der Verschlüsselungsgenerator liegt bei** (`br-verschluesselung-generator.html`) –
   bisher ein Werkzeug, das ausschließlich auf dem BR-Laufwerk lag. Er ist der einzige
   Weg zu einer lauffähigen Installation: drei Passwörter eingeben, und es entstehen
-  `br-zugang.js`, `key` und die leeren Start-Speicherstände beider Module, alle aus
+  `br-zugang.js` und die leeren Start-Speicherstände beider Module, alle aus
   **einem** frisch gewürfelten Hauptschlüssel. Er enthält kein eingebautes Geheimnis;
   jeder Aufruf erzeugt einen eigenen, unabhängigen Schlüssel.
 - **Lizenz: GNU General Public License v3.0** (`LICENSE`). Weitergabe – verändert oder

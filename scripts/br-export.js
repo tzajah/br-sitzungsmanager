@@ -628,7 +628,6 @@ function oeffneStammdaten() {
       '<button class="btn btn-klein" id="sdPwArbeit">Arbeits-Passwort ändern</button>' +
       '<button class="btn btn-klein" id="sdPwAdmin">Debug-Mode-Passwort ändern</button>' +
       '<button class="btn btn-klein btn-primaer" id="sdZugangDownload">Zugangsdatei (br-zugang.js) herunterladen</button>' +
-      '<button class="btn btn-klein" id="sdKeyDownload">Cryptodatei (key) herunterladen</button>' +
     '</div>' +
     '</div>' +
     '<div class="dlg-fuss"><button class="btn btn-gefahr" id="sdReset">Alle Daten zurücksetzen …</button>' +
@@ -1237,13 +1236,6 @@ function oeffneStammdaten() {
     zugangsdateiHerunterladen();
     zeigeToast('Zugangsdatei erzeugt. Bitte br-zugang.js in den Unterordner „scripts" auf dem Laufwerk legen (bestehende ersetzen).', 'erfolg');
   };
-  dlg.querySelector('#sdKeyDownload').onclick = async () => {
-    if (!sitzungsSchluessel) { zeigeToast('Kein Schlüssel in dieser Sitzung.', 'fehler'); return; }
-    const inhalt = await keyDateiInhalt(sitzungsSchluessel);
-    dateiHerunterladen(new Blob([inhalt], { type: 'text/javascript' }), 'key');
-    zeigeToast('Cryptodatei erzeugt. Bitte key in den Unterordner „scripts" legen (passt zur aktuellen br-zugang.js).', 'erfolg');
-  };
-
   dlg.querySelector('#sdReset').onclick = () => bestaetigen('Wirklich alles zurücksetzen?',
     'Sämtliche Sitzungen, Mitglieder und Anlagen werden aus dem Zwischenspeicher dieses Browsers entfernt. Nicht als Datei gesicherte Daten gehen verloren.',
     () => { daten = leeresProjekt(); ui.sitzungId = null; dirtyMeta = false; dirtySitzungen.clear(); alleDatenErsetzenP().then(() => { dlg.close(); renderAlles(); zeigeToast('Alle Daten wurden zurückgesetzt.'); }); },
@@ -1281,10 +1273,6 @@ async function initialisieren() {
     zeigeSperrschirm('gesperrt', 'Die Zugangsdatei <code>br-zugang.js</code> fehlt oder ist ungültig.');
     return;
   }
-  if (!keyVorhanden()) {
-    zeigeSperrschirm('gesperrt', 'Die Cryptodatei <code>key</code> fehlt oder ist ungültig.');
-    return;
-  }
 
   const gespeichert = await Speicher.metaHolen('zugang');
   if (zugangSignatur(extern) !== zugangSignatur(gespeichert)) {
@@ -1292,10 +1280,7 @@ async function initialisieren() {
   }
   aktuellesZugang = extern;
   /* Neuladen der Seite darf weder Daten noch Passwort kosten: läuft im Tab noch eine Sitzung, geht es ohne Sperrschirm weiter. */
-  if (await sitzungFortsetzen()) {
-    try { await appStarten(); return; }
-    catch (e) { if (e && e.message === KEY_FEHLER) return; }   /* Sperrschirm steht bereits */
-  }
+  if (await sitzungFortsetzen()) { await appStarten(); return; }
   zeigeSperrschirm('login');
 }
 
@@ -1367,12 +1352,6 @@ function verkabeln() {
 }
 
 async function appStarten() {
-  /* Key-Datei muss zur geladenen br-zugang.js passen (gleicher MK); deckt Login und Sicherung-öffnen ab. */
-  if (!(await keyGueltig())) {
-    sitzungsSchluessel = null; sitzungsMkBytes = null; sitzungsRolle = null; ui.rolle = null; daten = null;
-    zeigeSperrschirm('gesperrt', 'Die Cryptodatei <code>key</code> ist ungültig oder passt nicht zu dieser <code>br-zugang.js</code>.');
-    throw new Error(KEY_FEHLER);
-  }
   /* Reihenfolge bewusst: externe Dateien haben Vorrang, „Gremium" kommt zuletzt und überschreibt die Einzeldateien. */
   let externUebernommen = externeStandardTopsUebernehmen();
   if (externeVorlagenUebernehmen()) externUebernommen = true;

@@ -49,8 +49,8 @@
 <div class="karte">
   <h1>Verschlüsselungsgenerator</h1>
   <p class="unter">Erzeugt die beiden Dateien <code>br-zugang.js</code> (Zugang/Passwörter) und
-    <code>key</code> (verschlüsselte Cryptodatei) für den BR-Sitzungsmanager sowie die leeren
-    Speicherstände für die Erstinbetriebnahme. Alles wird aus <b>einem</b> Hauptschlüssel erzeugt.</p>
+    die leeren Speicherstände für die Erstinbetriebnahme. Alles wird aus <b>einem</b>
+    Hauptschlüssel erzeugt.</p>
 
   <label for="viewer">Viewer-Passwort <span style="font-weight:400">(nur Ansehen)</span></label>
   <input type="password" id="viewer" autocomplete="new-password">
@@ -64,11 +64,10 @@
   <div class="fehler" id="fehler"></div>
 
   <div class="ergebnis" id="ergebnis">
-    <b>Dateien erzeugt.</b> Beide herunterladen und in denselben Ordner wie
-    <code>BR-Sitzungsmanager.html</code> legen:
+    <b>Dateien erzeugt.</b> Die Zugangsdatei herunterladen und in den Unterordner
+    <code>scripts</code> neben <code>BR-Sitzungsmanager.html</code> legen:
     <div class="dl-reihe">
       <button class="btn-sek" id="dlZugang">br-zugang.js herunterladen</button>
-      <button class="btn-sek" id="dlKey">key herunterladen</button>
     </div>
     <p style="margin:14px 0 0"><b>Leere Speicherstände</b> für die Erstinbetriebnahme – beide Module
       lassen sich nur über „Datei laden" öffnen, brauchen also je eine Startdatei. Auf dem
@@ -79,7 +78,7 @@
     </div>
     <div class="warn">
       Bewahren Sie die Passwörter sicher auf – sie stehen <b>nicht</b> in den Dateien und lassen
-      sich nicht wiederherstellen. Ohne beide Dateien ist die App gesperrt.
+      sich nicht wiederherstellen. Ohne <code>br-zugang.js</code> ist die App gesperrt.
     </div>
   </div>
 
@@ -95,10 +94,8 @@
    Diese Konstanten und Funktionen MÜSSEN mit der App synchron bleiben, sonst
    lassen sich die erzeugten Dateien dort nicht entschlüsseln:
      - PBKDF2_ITER (Iterationen)   - Zugang-Format v:2
-     - KEY_MARKER (key-Payload)    - key-Format v:1
    ===================================================================== */
 const PBKDF2_ITER = 600000;
-const KEY_MARKER = 'br-sitzungsmanager/key';
 
 function bytesZuBase64(bytes) {
   let s = ''; const teil = 0x8000;
@@ -156,18 +153,6 @@ function zugangDateiInhalt(z) {
   return kopf + 'window.BR_ZUGANG = ' + JSON.stringify(z, null, 2) + ';\n';
 }
 
-/* Baut die key-Datei (identisch zur App): Marker-Payload unter dem MK verschlüsselt. */
-async function keyDateiInhalt(mkKey) {
-  const { iv, ct } = await Krypto.chiffriere(mkKey, { marker: KEY_MARKER, v: 1 });
-  const obj = { v: 1, iv: Array.from(iv), ct: bytesZuBase64(new Uint8Array(ct)) };
-  const kopf =
-    '/* key – Cryptodatei fuer den BR-Sitzungsmanager. Ohne gueltige key-Datei ist die App\n' +
-    '   gesperrt. Sie passt nur zu der br-zugang.js, mit der sie erzeugt wurde.\n' +
-    '   Neben BR-Sitzungsmanager.html ablegen. Nicht veraendern.\n' +
-    '   Erzeugt am ' + new Date().toISOString() + '. */\n';
-  return kopf + 'window.BR_KEY = ' + JSON.stringify(obj, null, 2) + ';\n';
-}
-
 /* Leerer Speicherstand im Sicherungsformat der App (enc-v2). Die Vorgabewerte – Kategorien,
    Standard-TOPs, Bausteine – ergänzt migriere() beim Laden, daher bleibt die Nutzlast minimal. */
 async function standDateiInhalt(mkKey, zugang) {
@@ -192,7 +177,7 @@ function dateiHerunterladen(inhalt, name, mime) {
   setTimeout(() => URL.revokeObjectURL(url), 4000);
 }
 
-let zugangInhalt = null, keyInhalt = null, standInhalt = null;
+let zugangInhalt = null, standInhalt = null;
 const $ = id => document.getElementById(id);
 
 $('erzeugen').onclick = async () => {
@@ -205,7 +190,6 @@ $('erzeugen').onclick = async () => {
     const { key, bytes } = await Krypto.zufallsMk();
     const z = await zugangErzeugen(bytes, { viewer: v, arbeit: a, admin: d });
     zugangInhalt = zugangDateiInhalt(z);
-    keyInhalt = await keyDateiInhalt(key);
     standInhalt = await standDateiInhalt(key, z);
     f.textContent = '';
     $('ergebnis').classList.add('an');
@@ -215,7 +199,6 @@ $('erzeugen').onclick = async () => {
 };
 
 $('dlZugang').onclick = () => { if (zugangInhalt) dateiHerunterladen(zugangInhalt, 'br-zugang.js'); };
-$('dlKey').onclick = () => { if (keyInhalt) dateiHerunterladen(keyInhalt, 'key'); };
 
 /* Beide Module lesen dasselbe Sicherungsformat; getrennte Dateien, weil jedes Modul seinen eigenen Speicherstand führt. */
 const standLaden = modul => {

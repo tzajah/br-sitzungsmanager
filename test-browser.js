@@ -26,8 +26,8 @@ async function pruefe(datei, erwarteterModus) {
   const browser = await chromium.launch();
   const seite = await browser.newPage();
   /* Nachbardateien, die fehlen dürfen – alles andere ist ein echter Ladefehler.
-     br-zugang.js und key liegen nur auf dem geschützten Laufwerk; ohne sie steht der Sperrschirm „gesperrt". */
-  const OPTIONAL = ['Gremium', 'urlaub.js', 'br-zugang.js', 'key'];
+     br-zugang.js liegt nur auf dem geschützten Laufwerk; ohne sie steht der Sperrschirm „gesperrt". */
+  const OPTIONAL = ['Gremium', 'urlaub.js', 'br-zugang.js'];
   const fehler = [];
   let fehlendOptional = 0;
   seite.on('pageerror', e => fehler.push('pageerror: ' + e.message));
@@ -1803,7 +1803,7 @@ async function pruefeErstinbetriebnahme() {
   const datei = JSON.parse(stand);
   assert.strictEqual(datei.format, 'enc-v2', 'der Speicherstand hat das Sicherungsformat der App');
   assert.ok(datei.zugang && datei.zugang.arbeit && datei.zugang.viewer, 'und trägt den Zugang mit');
-  assert.ok(await gen.evaluate('!!zugangInhalt && !!keyInhalt'), 'br-zugang.js und key entstehen weiterhin');
+  assert.ok(await gen.evaluate('!!zugangInhalt'), 'br-zugang.js entsteht weiterhin');
 
   const app = await ctx.newPage();
   app.on('pageerror', e => fehler.push('protokoll: ' + e.message));

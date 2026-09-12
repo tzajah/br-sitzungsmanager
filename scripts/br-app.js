@@ -7,8 +7,6 @@ const DB_NAME = 'br-sitzungsmanager' + (APP_MODUS === 'protokoll' ? '-protokoll'
 const DB_VERSION = 1;
 const PBKDF2_ITER = 600000;   /* OWASP-Empfehlung für PBKDF2-HMAC-SHA256 */
 const VERIFIER_KLARTEXT = 'br-sitzungsmanager/verifizierer';
-const KEY_MARKER = 'br-sitzungsmanager/key';   /* Klartext-Marker im verschlüsselten key-Payload */
-const KEY_FEHLER = 'key-ungueltig';            /* Sentinel: Prüfung schlug fehl → App sperren */
 
 let daten = null;
 let ui = { sitzungId: null, tab: modusStartReiter(), ansicht: 'sitzung', beschlussFilter: { jahr: '', ergebnis: '', suche: '', tag: '', status: '', vonDatum: '', bisDatum: '' }, aufgabenFilter: { jahr: '', wer: '', suche: '', vonDatum: '', bisDatum: '' }, dokumentFilter: { kategorie: '', sitzungId: '', suche: '' }, dokumentOrdner: null, urlaubMonat: '', sitzungSuche: '', archivAnzeigen: false, speicherFehler: false, zugeklappt: new Set() };
@@ -142,30 +140,6 @@ function zugangsdateiHerunterladen() {
     '   Erzeugt am ' + new Date().toISOString() + '. */\n';
   const js = kopf + 'window.BR_ZUGANG = ' + JSON.stringify(aktuellesZugang, null, 2) + ';\n';
   dateiHerunterladen(new Blob([js], { type: 'text/javascript' }), 'br-zugang.js');
-}
-
-/* key-Datei: Payload mit demselben MK wie br-zugang.js verschlüsselt, daher an genau diese Zugangsdatei gebunden. Ohne gültige key ist die App gesperrt. */
-function keyVorhanden() {
-  const k = (typeof window !== 'undefined') ? window.BR_KEY : null;
-  return !!(k && typeof k === 'object' && Array.isArray(k.iv) && typeof k.ct === 'string');
-}
-async function keyGueltig() {
-  if (!keyVorhanden() || !sitzungsSchluessel) return false;
-  try {
-    const p = await Krypto.dechiffriere(sitzungsSchluessel, window.BR_KEY.iv, base64ZuBytes(window.BR_KEY.ct).buffer);
-    return !!(p && p.marker === KEY_MARKER);
-  } catch (e) { return false; }
-}
-/* Erzeugt den Inhalt einer zum übergebenen MK passenden key-Datei (Debug-Panel/Generator). */
-async function keyDateiInhalt(mkKey) {
-  const { iv, ct } = await Krypto.chiffriere(mkKey, { marker: KEY_MARKER, v: 1 });
-  const obj = { v: 1, iv: Array.from(iv), ct: bytesZuBase64(new Uint8Array(ct)) };
-  const kopf =
-    '/* key – Cryptodatei fuer den BR-Sitzungsmanager. Ohne gueltige key-Datei ist die App\n' +
-    '   gesperrt. Diese Cryptodatei passt nur zu der br-zugang.js, mit der sie erzeugt wurde.\n' +
-    '   Neben BR-Sitzungsmanager.html ablegen. Nicht veraendern.\n' +
-    '   Erzeugt am ' + new Date().toISOString() + '. */\n';
-  return kopf + 'window.BR_KEY = ' + JSON.stringify(obj, null, 2) + ';\n';
 }
 
 function istAdmin() { return sitzungsRolle === 'admin'; }
@@ -972,7 +946,6 @@ async function projektBeitreten(datei) {
     await appStarten(); sperrschirmWeg();
     zeigeToast('Angemeldet als ' + (inst.rolle === 'admin' ? 'Debug-Mode' : (inst.rolle === 'arbeit' ? 'Arbeitsmodus' : 'Nur-Lese-Ansicht')) + '.', 'erfolg');
   } catch (e) {
-    if (e && e.message === KEY_FEHLER) return;   /* Sperrschirm steht bereits */
     zeigeToast('Die Sicherung ließ sich nicht öffnen (Passwort passt nicht zu dieser Sicherung oder Datei beschädigt).', 'fehler');
   }
 }
@@ -1026,7 +999,7 @@ function zeigeSperrschirm(modus, kontext) {
         '<h2>Anwendung gesperrt</h2>' +
         '<div class="ueberzeile">BR-Sitzungsmanager</div>' +
         '<p>' + (kontext || 'Die Anwendung ist gesperrt.') + '</p>' +
-        '<p class="klein-grau">Bitte legen Sie eine gültige <code>br-zugang.js</code> und die Cryptodatei <code>key</code> in denselben Ordner wie <code>BR-Sitzungsmanager.html</code> und laden Sie die Seite neu.</p>' +
+        '<p class="klein-grau">Bitte legen Sie eine gültige <code>br-zugang.js</code> in denselben Ordner wie <code>BR-Sitzungsmanager.html</code> und laden Sie die Seite neu.</p>' +
       '</div>';
 
   } else {

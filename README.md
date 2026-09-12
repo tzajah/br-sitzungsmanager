@@ -23,11 +23,11 @@ Anwesenheitsliste, Niederschrift) nach den einschlägigen Vorschriften des BetrV
     pdf-lib.min.js
     standard-tops.js  category.js  protokoll_vorlagen.js
     beschluss_vorlagen.js  urlaub.js
-    br-zugang.js  key  Gremium
+    br-zugang.js  Gremium
   ```
 
   Der Ordner `scripts/` muss mitkopiert werden – ohne ihn startet die App nicht.
-  Ohne gültige `scripts/br-zugang.js` **und** `scripts/key` bleibt sie gesperrt.
+  Ohne gültige `scripts/br-zugang.js` bleibt sie gesperrt.
 - **Getrennte Dateien und getrennte Speicherstände.** Die Sitzungsleitung plant in
   `BR-Sitzungsmanager.html` (Rahmendaten, Tagesordnung, Einladung, Präsentation),
   die Schriftführung protokolliert in `BR-Protokoll.html` (Tagesordnung,
@@ -161,21 +161,19 @@ Anwesenheitsliste, Niederschrift) nach den einschlägigen Vorschriften des BetrV
 
 1. Den gesamten Programmordner **mitsamt dem Unterordner `scripts/`** auf das
    BR-Laufwerk legen. Die Sitzungsleitung öffnet `BR-Sitzungsmanager.html`, die
-   Schriftführung `BR-Protokoll.html`. Fehlt `scripts/br-zugang.js` oder
-   `scripts/key`, ist die App gesperrt; fehlt eines der fünf Code-Module in
-   `scripts/`, startet sie gar nicht.
+   Schriftführung `BR-Protokoll.html`. Fehlt `scripts/br-zugang.js`, ist die App
+   gesperrt; fehlt eines der fünf Code-Module in `scripts/`, startet sie gar nicht.
 2. Die App öffnet beim Start den Sperrschirm mit einer einzigen Option: **„Datei laden"**.
    Nach der Wahl der Speicherdatei wird das **Passwort** abgefragt – mit dem
    **Viewer-Passwort** öffnet sich die Nur-Lese-Ansicht, mit dem **Arbeits-Passwort** der
    Bearbeitungsmodus, mit dem **Debug-Mode-Passwort** zusätzlich die Verwaltung.
-3. `br-zugang.js` (Passwörter) und `key` (Cryptodatei) werden mit dem Werkzeug
-   **`br-verschluesselung-generator.html`** erzeugt: drei Passwörter eingeben, beide Dateien
-   herunterladen und neben die HTML legen. Dasselbe Werkzeug liefert für die
+3. `br-zugang.js` wird mit dem Werkzeug **`br-verschluesselung-generator.html`**
+   erzeugt: drei Passwörter eingeben, die Datei herunterladen und nach `scripts/` legen. Dasselbe Werkzeug liefert für die
    **Erstinbetriebnahme** je einen leeren Speicherstand für den Sitzungsmanager und
    für das Protokollmodul – ohne eine solche Datei lässt sich kein Modul öffnen. Passwörter lassen sich später im Debug-Panel
    unter **„Zugang & Passwörter"** ändern; danach **„Zugangsdatei (br-zugang.js)
    herunterladen"** und die Datei in den Ordner `scripts` legen – erst dann gilt das neue
-   Passwort für alle. Die Cryptodatei `key` bleibt dabei gültig (gleicher Hauptschlüssel).
+   Passwort für alle.
 4. Über **„Gremium & Mitglieder"** Stammdaten und Personen (BR/SBV/JAV) erfassen.
 5. **Sitzung anlegen**, Tagesordnung aufstellen, protokollieren, als PDF
    exportieren.
@@ -211,7 +209,7 @@ Daher gilt: Das **Programm** (Stammverzeichnis **plus `scripts/`**) liegt auf de
 Laufwerk, die **verschlüsselte Sicherungsdatei** ist die verlässliche, gemeinsame
 Ablage. Wichtig: Der Unterordner `scripts/` muss mitkopiert werden – die HTML-Dateien
 laden von dort. Fehlt eines der fünf Code-Module, startet die App nicht; fehlt
-`scripts/br-zugang.js` oder `scripts/key`, ist sie gesperrt. Fehlen `br-design.css`,
+`scripts/br-zugang.js`, ist sie gesperrt. Fehlen `br-design.css`,
 `scripts/pdf-lib.min.js`, `scripts/standard-tops.js`, `scripts/category.js`,
 `scripts/protokoll_vorlagen.js`, `scripts/beschluss_vorlagen.js` oder
 `scripts/urlaub.js`, läuft die App weiter – es fehlen dann Erscheinungsbild
@@ -220,7 +218,7 @@ bzw. der Urlaubskalender.
 
 Alle Dateien, die die App zum Herunterladen anbietet – `standard-tops.js`,
 `category.js`, `protokoll_vorlagen.js`, `beschluss_vorlagen.js`, `urlaub.js`,
-`br-zugang.js`, `key` und `Gremium` – gehören nach `scripts/`. Sicherungen
+`br-zugang.js` und `Gremium` – gehören nach `scripts/`. Sicherungen
 (`.brenc.json`) und Übergabedateien (`.brto.json`, `.brerg.json`) **nicht**: Die
 liegen dort, wo ihr sie ablegt.
 
@@ -307,12 +305,6 @@ getrennte Browser-Profile.
   Viewer-Passwort mitlesen – der eigentliche Schutz „at rest" ist das **geschützte
   Laufwerk**, auf dem die Dateien liegen. Der Login trennt Ansehen/Bearbeiten/
   Verwalten an der Oberfläche.
-- **Cryptodatei `key`:** Der Start ist zusätzlich an die verschlüsselte Datei `key`
-  gebunden (an `br-zugang.js` gekoppelt, gleicher Hauptschlüssel). Sie belegt, dass
-  derselbe Hauptschlüssel vorliegt, und ist damit eine Stolperschwelle gegen den
-  versehentlichen Betrieb mit zusammengewürfelten Dateien – **kein** Schutz der Daten.
-  Den leisten allein die Passwörter, und als reine Browser-Anwendung ist die Prüfung
-  technisch umgehbar.
 - **Passwort verloren = Daten verloren.** Passwörter verbindlich im Gremium
   festlegen und regelmäßig sichern. Die **Default-Kennwörter nach der Einführung
   ändern** und danach die neue `br-zugang.js` verteilen.
@@ -348,8 +340,7 @@ und -fassung, Niederschrift); Geheimhaltung nach § 79 BetrVG.
 | `test-br.js` | Selbsttest ohne Browser: Urlaubs-Logik, Betriebsart, gemeinsamer Skript-Scope (`node test-br.js`) |
 | `test-browser.js` | Browser-Integrationstest beider HTML-Dateien und des Umwandlers via Playwright (`node test-browser.js`) |
 | `scripts/br-zugang.js` | Verschlüsselte Zugangsdatei mit den Rollen-Passwörtern (maßgeblich) |
-| `scripts/key` | Verschlüsselte Cryptodatei, an `br-zugang.js` gebunden (ohne sie ist die App gesperrt) |
-| `br-verschluesselung-generator.html` | Werkzeug für die Erstinbetriebnahme: erzeugt ein zusammengehöriges Paar `br-zugang.js` + `key` sowie die leeren Start-Speicherstände beider Module |
+| `br-verschluesselung-generator.html` | Werkzeug für die Erstinbetriebnahme: erzeugt `br-zugang.js` sowie die leeren Start-Speicherstände beider Module, alle aus einem Hauptschlüssel |
 | `br-sicherung-teilen.html` | Werkzeug zur einmaligen Umstellung: teilt eine vorhandene Sicherung in je eine Startdatei für Sitzungsmanager und Protokollmodul |
 | `br-anlagen-entfernen.html` | Werkzeug zum Aufräumen: entfernt gespeicherte Anlagen-Dateien aus einer Sicherung oder aus der Browser-Ablage des Protokollmoduls; die Verweise bleiben erhalten |
 | `br-urlaub-melden.html` | Werkzeug für die Mitglieder: eigene Abwesenheiten erfassen und als JSON-Datei an die Sitzungsleitung geben. Ohne Passwort, läuft allein – kann auch einzeln weitergegeben werden |
@@ -385,7 +376,7 @@ Migration alter Sicherungsstände (Klartext-Altformat und `enc-v2` ohne Kategori
 die getrennten Speicherstände samt Sitzungs-Übergabe sowie den Umwandler
 `br-sicherung-teilen.html` inklusive Passwort- und Fehlerfällen.
 
-Beide Skripte brauchen weder `br-zugang.js` noch `key`: Der Sperrschirm bleibt zu,
+Beide Skripte brauchen keine `br-zugang.js`: Der Sperrschirm bleibt zu,
 die Renderfunktionen werden direkt mit einem Testprojekt aufgerufen.
 
 ## Status
