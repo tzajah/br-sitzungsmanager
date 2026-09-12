@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BR-Sitzungsmanager · Verschlüsselungsgenerator</title>
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    max-width: 640px; margin: 6vh auto; padding: 0 20px; line-height: 1.5;
+    color: #1a1a1a; background: #f6f7f8;
+  }
+  @media (prefers-color-scheme: dark) { body { color: #e6e6e6; background: #16181c; } }
+  .karte {
+    background: Canvas; border: 1px solid rgba(128,128,128,.35); border-radius: 12px;
+    padding: 24px 26px; box-shadow: 0 1px 4px rgba(0,0,0,.08);
+  }
+  h1 { font-size: 1.35rem; margin: 0 0 4px; }
+  .unter { color: #6b7280; margin: 0 0 18px; font-size: .92rem; }
+  label { display: block; font-weight: 600; margin: 14px 0 4px; font-size: .92rem; }
+  input[type=password], input[type=text] {
+    width: 100%; padding: 9px 11px; border: 1px solid rgba(128,128,128,.5);
+    border-radius: 8px; font-size: 1rem; background: Field; color: FieldText;
+  }
+  .hinweis { font-size: .82rem; color: #6b7280; margin-top: 3px; }
+  button {
+    font: inherit; cursor: pointer; border-radius: 8px; border: 1px solid transparent;
+    padding: 10px 16px; margin-top: 6px;
+  }
+  .btn-primaer { background: #2563eb; color: #fff; font-weight: 600; }
+  .btn-primaer:hover { background: #1d4ed8; }
+  .btn-sek { background: transparent; border-color: rgba(128,128,128,.5); color: inherit; }
+  .btn-sek:hover { background: rgba(128,128,128,.12); }
+  .fehler { color: #dc2626; font-size: .9rem; margin-top: 10px; min-height: 1.2em; }
+  .ergebnis { margin-top: 18px; padding-top: 16px; border-top: 1px solid rgba(128,128,128,.3); display: none; }
+  .ergebnis.an { display: block; }
+  .dl-reihe { display: flex; gap: 10px; flex-wrap: wrap; margin: 10px 0; }
+  .warn {
+    background: rgba(234,179,8,.15); border: 1px solid rgba(234,179,8,.5);
+    border-radius: 8px; padding: 10px 12px; font-size: .88rem; margin-top: 12px;
+  }
+  code { background: rgba(128,128,128,.18); padding: 1px 5px; border-radius: 4px; font-size: .9em; }
+  .fuss { font-size: .8rem; color: #6b7280; margin-top: 20px; }
+</style>
+</head>
+<body>
+<div class="karte">
+  <h1>Verschlüsselungsgenerator</h1>
+  <p class="unter">Erzeugt die beiden Dateien <code>br-zugang.js</code> (Zugang/Passwörter) und
+    <code>key</code> (verschlüsselte Cryptodatei) für den BR-Sitzungsmanager sowie die leeren
+    Speicherstände für die Erstinbetriebnahme. Alles wird aus <b>einem</b> Hauptschlüssel erzeugt.</p>
+
+  <label for="viewer">Viewer-Passwort <span style="font-weight:400">(nur Ansehen)</span></label>
+  <input type="password" id="viewer" autocomplete="new-password">
+  <label for="arbeit">Arbeits-Passwort <span style="font-weight:400">(Bearbeiten)</span></label>
+  <input type="password" id="arbeit" autocomplete="new-password">
+  <label for="admin">Debug-Mode-Passwort <span style="font-weight:400">(Verwaltung)</span></label>
+  <input type="password" id="admin" autocomplete="new-password">
+  <p class="hinweis">Jeweils mindestens 8 Zeichen; die drei Passwörter müssen sich unterscheiden.</p>
+
+  <button class="btn-primaer" id="erzeugen">Dateien erzeugen</button>
+  <div class="fehler" id="fehler"></div>
+
+  <div class="ergebnis" id="ergebnis">
+    <b>Dateien erzeugt.</b> Beide herunterladen und in denselben Ordner wie
+    <code>BR-Sitzungsmanager.html</code> legen:
+    <div class="dl-reihe">
+      <button class="btn-sek" id="dlZugang">br-zugang.js herunterladen</button>
+      <button class="btn-sek" id="dlKey">key herunterladen</button>
+    </div>
+    <p style="margin:14px 0 0"><b>Leere Speicherstände</b> für die Erstinbetriebnahme – beide Module
+      lassen sich nur über „Datei laden" öffnen, brauchen also je eine Startdatei. Auf dem
+      geschützten Laufwerk ablegen und im jeweiligen Modul laden:</p>
+    <div class="dl-reihe">
+      <button class="btn-sek" id="dlStandManager">Speicherstand Sitzungsmanager</button>
+      <button class="btn-sek" id="dlStandProtokoll">Speicherstand Protokollmodul</button>
+    </div>
+    <div class="warn">
+      Bewahren Sie die Passwörter sicher auf – sie stehen <b>nicht</b> in den Dateien und lassen
+      sich nicht wiederherstellen. Ohne beide Dateien ist die App gesperrt.
+    </div>
+  </div>
+
+  <p class="fuss">Hinweis: Als reine Browser-Anwendung ist die Prüfung der Cryptodatei technisch
+    umgehbar; sie verhindert beiläufige Weitergabe, schützt aber nicht die Daten. Die schützen
+    allein die Passwörter.</p>
+</div>
+
+<script>
+'use strict';
+/* =====================================================================
+   Krypto-Kern – bewusst als eigenständige Kopie aus BR-Sitzungsmanager.html.
+   Diese Konstanten und Funktionen MÜSSEN mit der App synchron bleiben, sonst
+   lassen sich die erzeugten Dateien dort nicht entschlüsseln:
+     - PBKDF2_ITER (Iterationen)   - Zugang-Format v:2
+     - KEY_MARKER (key-Payload)    - key-Format v:1
+   ===================================================================== */
+const PBKDF2_ITER = 600000;
+const KEY_MARKER = 'br-sitzungsmanager/key';
+
+function bytesZuBase64(bytes) {
+  let s = ''; const teil = 0x8000;
+  for (let i = 0; i < bytes.length; i += teil) s += String.fromCharCode.apply(null, bytes.subarray(i, i + teil));
+  return btoa(s);
+}
+
+const Krypto = {
+  async schluessel(passwort, salt, iter) {
+    const basis = await crypto.subtle.importKey(
+      'raw', new TextEncoder().encode(passwort), 'PBKDF2', false, ['deriveKey']);
+    return crypto.subtle.deriveKey(
+      { name: 'PBKDF2', salt: salt, iterations: iter, hash: 'SHA-256' },
+      basis, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+  },
+  async chiffriere(schluessel, obj) {
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const klar = new TextEncoder().encode(JSON.stringify(obj));
+    const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv: iv }, schluessel, klar);
+    return { iv: iv, ct: ct };
+  },
+  async zufallsMk() {
+    const bytes = crypto.getRandomValues(new Uint8Array(32));
+    const key = await crypto.subtle.importKey('raw', bytes, 'AES-GCM', true, ['encrypt', 'decrypt']);
+    return { key: key, bytes: bytes };
+  },
+  async verpacke(passwortSchluessel, mkBytes) {
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv: iv }, passwortSchluessel, mkBytes);
+    return { iv: iv, ct: ct };
+  }
+};
+
+/* Baut den Zugangsblock (identisch zur App): MK je Rolle unter dem Passwort verpackt. */
+async function zugangErzeugen(mkBytes, pws) {
+  const iter = PBKDF2_ITER;
+  const bau = async pw => {
+    const salt = crypto.getRandomValues(new Uint8Array(16));
+    const k = await Krypto.schluessel(pw, salt, iter);
+    const { iv, ct } = await Krypto.verpacke(k, mkBytes);
+    return { salt: Array.from(salt), iv: Array.from(iv), ct: bytesZuBase64(new Uint8Array(ct)) };
+  };
+  const z = { v: 2, iter: iter, admin: await bau(pws.admin), arbeit: await bau(pws.arbeit) };
+  if (pws.viewer != null) z.viewer = await bau(pws.viewer);
+  return z;
+}
+
+function zugangDateiInhalt(z) {
+  const kopf =
+    '/* br-zugang.js – Zugang (Passwoerter) fuer den BR-Sitzungsmanager.\n' +
+    '   Enthaelt den unter den Rollen-Passwoertern (Viewer/Arbeit/Debug-Mode) VERSCHLUESSELTEN\n' +
+    '   Hauptschluessel – die Passwoerter selbst stehen NICHT im Klartext hier.\n' +
+    '   Diese Datei neben BR-Sitzungsmanager.html ablegen; sie ist massgeblich.\n' +
+    '   Erzeugt am ' + new Date().toISOString() + '. */\n';
+  return kopf + 'window.BR_ZUGANG = ' + JSON.stringify(z, null, 2) + ';\n';
+}
+
+/* Baut die key-Datei (identisch zur App): Marker-Payload unter dem MK verschlüsselt. */
+async function keyDateiInhalt(mkKey) {
+  const { iv, ct } = await Krypto.chiffriere(mkKey, { marker: KEY_MARKER, v: 1 });
+  const obj = { v: 1, iv: Array.from(iv), ct: bytesZuBase64(new Uint8Array(ct)) };
+  const kopf =
+    '/* key – Cryptodatei fuer den BR-Sitzungsmanager. Ohne gueltige key-Datei ist die App\n' +
+    '   gesperrt. Sie passt nur zu der br-zugang.js, mit der sie erzeugt wurde.\n' +
+    '   Neben BR-Sitzungsmanager.html ablegen. Nicht veraendern.\n' +
+    '   Erzeugt am ' + new Date().toISOString() + '. */\n';
+  return kopf + 'window.BR_KEY = ' + JSON.stringify(obj, null, 2) + ';\n';
+}
+
+/* Leerer Speicherstand im Sicherungsformat der App (enc-v2). Die Vorgabewerte – Kategorien,
+   Standard-TOPs, Bausteine – ergänzt migriere() beim Laden, daher bleibt die Nutzlast minimal. */
+async function standDateiInhalt(mkKey, zugang) {
+  const nutzlast = {
+    app: 'br-sitzungsmanager', version: 1, revision: 1,
+    zuletztGesichert: { am: new Date().toISOString(), von: 'Verschluesselungsgenerator' },
+    sitzungen: [], dokumente: [], dokumentInhalte: {}
+  };
+  const { iv, ct } = await Krypto.chiffriere(mkKey, nutzlast);
+  return JSON.stringify({
+    app: 'br-sitzungsmanager', format: 'enc-v2', zugang: zugang,
+    iv: Array.from(iv), ct: bytesZuBase64(new Uint8Array(ct))
+  });
+}
+
+function dateiHerunterladen(inhalt, name, mime) {
+  const blob = new Blob([inhalt], { type: mime || 'text/javascript;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+}
+
+let zugangInhalt = null, keyInhalt = null, standInhalt = null;
+const $ = id => document.getElementById(id);
+
+$('erzeugen').onclick = async () => {
+  const f = $('fehler');
+  const v = $('viewer').value, a = $('arbeit').value, d = $('admin').value;
+  if (v.length < 8 || a.length < 8 || d.length < 8) { f.textContent = 'Jedes Passwort benötigt mindestens 8 Zeichen.'; return; }
+  if (new Set([v, a, d]).size < 3) { f.textContent = 'Die drei Passwörter müssen sich unterscheiden.'; return; }
+  f.textContent = 'Wird erzeugt …';
+  try {
+    const { key, bytes } = await Krypto.zufallsMk();
+    const z = await zugangErzeugen(bytes, { viewer: v, arbeit: a, admin: d });
+    zugangInhalt = zugangDateiInhalt(z);
+    keyInhalt = await keyDateiInhalt(key);
+    standInhalt = await standDateiInhalt(key, z);
+    f.textContent = '';
+    $('ergebnis').classList.add('an');
+  } catch (e) {
+    f.textContent = 'Erzeugung fehlgeschlagen: ' + (e && e.message ? e.message : e);
+  }
+};
+
+$('dlZugang').onclick = () => { if (zugangInhalt) dateiHerunterladen(zugangInhalt, 'br-zugang.js'); };
+$('dlKey').onclick = () => { if (keyInhalt) dateiHerunterladen(keyInhalt, 'key'); };
+
+/* Beide Module lesen dasselbe Sicherungsformat; getrennte Dateien, weil jedes Modul seinen eigenen Speicherstand führt. */
+const standLaden = modul => {
+  if (!standInhalt) return;
+  dateiHerunterladen(standInhalt, 'BR-' + modul + '-Start_Rev0001_' + new Date().toISOString().slice(0, 10) + '.brenc.json',
+    'application/json;charset=utf-8');
+};
+$('dlStandManager').onclick = () => standLaden('Sitzungsmanager');
+$('dlStandProtokoll').onclick = () => standLaden('Protokoll');
+</script>
+</body>
+</html>

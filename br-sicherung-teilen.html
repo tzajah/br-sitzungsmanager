@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BR-Manager · Sicherung aufteilen</title>
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    max-width: 700px; margin: 6vh auto; padding: 0 20px; line-height: 1.5;
+    color: #1a1a1a; background: #f6f7f8;
+  }
+  @media (prefers-color-scheme: dark) { body { color: #e6e6e6; background: #16181c; } }
+  .karte {
+    background: Canvas; border: 1px solid rgba(128,128,128,.35); border-radius: 12px;
+    padding: 24px 26px; box-shadow: 0 1px 4px rgba(0,0,0,.08);
+  }
+  h1 { font-size: 1.35rem; margin: 0 0 4px; }
+  h2 { font-size: 1rem; margin: 20px 0 6px; }
+  .unter { color: #6b7280; margin: 0 0 18px; font-size: .92rem; }
+  label { display: block; font-weight: 600; margin: 14px 0 4px; font-size: .92rem; }
+  input[type=password], input[type=file] {
+    width: 100%; padding: 9px 11px; border: 1px solid rgba(128,128,128,.5);
+    border-radius: 8px; font-size: 1rem; background: Field; color: FieldText;
+  }
+  .hinweis { font-size: .82rem; color: #6b7280; margin-top: 3px; }
+  button {
+    font: inherit; cursor: pointer; border-radius: 8px; border: 1px solid transparent;
+    padding: 10px 16px; margin-top: 6px;
+  }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  .btn-primaer { background: #2563eb; color: #fff; font-weight: 600; }
+  .btn-primaer:hover:not(:disabled) { background: #1d4ed8; }
+  .btn-sek { background: transparent; border-color: rgba(128,128,128,.5); color: inherit; }
+  .btn-sek:hover:not(:disabled) { background: rgba(128,128,128,.12); }
+  .fehler { color: #dc2626; font-size: .9rem; margin-top: 10px; min-height: 1.2em; }
+  .ergebnis { margin-top: 18px; padding-top: 16px; border-top: 1px solid rgba(128,128,128,.3); display: none; }
+  .ergebnis.an { display: block; }
+  .dl-reihe { display: flex; gap: 10px; flex-wrap: wrap; margin: 10px 0; }
+  .warn {
+    background: rgba(234,179,8,.15); border: 1px solid rgba(234,179,8,.5);
+    border-radius: 8px; padding: 10px 12px; font-size: .88rem; margin-top: 12px;
+  }
+  code { background: rgba(128,128,128,.18); padding: 1px 5px; border-radius: 4px; font-size: .9em; }
+  table { border-collapse: collapse; width: 100%; font-size: .9rem; margin-top: 8px; }
+  th, td { text-align: left; padding: 5px 8px; border-bottom: 1px solid rgba(128,128,128,.25); }
+  th { font-weight: 600; color: #6b7280; }
+  td.zahl { text-align: right; font-variant-numeric: tabular-nums; }
+  .fuss { font-size: .8rem; color: #6b7280; margin-top: 20px; }
+</style>
+</head>
+<body>
+<div class="karte">
+  <h1>Sicherung aufteilen</h1>
+  <p class="unter">Erzeugt aus einer vorhandenen Sicherung zwei Dateien: eine für
+    <b>BR-Sitzungsmanager.html</b> und eine für <b>BR-Protokoll.html</b>. Beide Module haben seit
+    Version 0.26.0 einen eigenen Speicherstand.</p>
+
+  <p style="font-size:.9rem">Beide Dateien enthalten den <b>vollständigen</b> Datenbestand –
+    Stammdaten, Personen, alle Sitzungen mit Tagesordnung und Protokoll. Unterschied: Die
+    <b>Anlagen-Dateien selbst</b> wandern nur in die Sitzungsmanager-Datei. Das Protokollmodul
+    erhält lediglich die Verweise (Name, Nummer, Kategorie) – genau das, was es für das
+    Anlagenverzeichnis im Protokoll-PDF braucht. Anlagen werden ohnehin nicht in die PDFs
+    eingebettet, sondern nur aufgeführt.</p>
+
+  <label for="datei">1. Vorhandene Sicherung wählen (<code>.brenc.json</code>)</label>
+  <input type="file" id="datei" accept=".json,application/json">
+
+  <label for="pw">2. Passwort dieser Sicherung</label>
+  <input type="password" id="pw" autocomplete="off" placeholder="Arbeits-, Viewer- oder Debug-Mode-Passwort">
+  <p class="hinweis">Wird nur im Browser verwendet – diese Seite arbeitet vollständig offline und
+    sendet nichts. Die erzeugten Dateien tragen denselben Zugang; es gelten weiterhin dieselben Passwörter.</p>
+
+  <button class="btn-primaer" id="los" disabled>Aufteilen</button>
+  <div class="fehler" id="fehler"></div>
+
+  <div class="ergebnis" id="ergebnis">
+    <h2>Inhalt der Sicherung</h2>
+    <table id="statistik"></table>
+
+    <h2>Ergebnis</h2>
+    <div class="dl-reihe">
+      <button class="btn-primaer" id="dlSm">Sitzungsmanager-Datei herunterladen</button>
+      <button class="btn-sek" id="dlPm">Protokoll-Datei herunterladen</button>
+    </div>
+
+    <div class="warn">
+      <b>So geht es weiter:</b>
+      <ol style="margin:6px 0 0;padding-left:20px">
+        <li><b>BR-Sitzungsmanager.html</b> öffnen, anmelden, „Öffnen" → Sitzungsmanager-Datei laden.</li>
+        <li><b>BR-Protokoll.html</b> öffnen, anmelden, „Öffnen" → Protokoll-Datei laden.</li>
+      </ol>
+      Ab dann arbeiten beide Module getrennt. Einzelne Sitzungen wandern danach über
+      „Sitzung übergeben" / „Sitzung übernehmen" hin und her.
+    </div>
+    <p class="hinweis">Der bestehende Browser-Stand des Sitzungsmanagers bleibt unverändert
+      erhalten – dort ist das Laden nur nötig, wenn du auf einem anderen PC neu anfängst.</p>
+  </div>
+
+  <p class="fuss">Läuft vollständig offline. Diese Datei kann nach der einmaligen Umstellung
+    liegen bleiben oder gelöscht werden. © 2026 Patrick Pählke</p>
+</div>
+
+<script>
+'use strict';
+/* Eigenständiges Werkzeug; Krypto-Bausteine müssen mit br-app.js formatgleich bleiben. */
+
+const PBKDF2_ITER = 600000;
+
+function bytesZuBase64(bytes) {
+  let s = ''; const teil = 0x8000;
+  for (let i = 0; i < bytes.length; i += teil) s += String.fromCharCode.apply(null, bytes.subarray(i, i + teil));
+  return btoa(s);
+}
+function base64ZuBytes(b64) {
+  const bin = atob(b64); const arr = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+  return arr;
+}
+const Krypto = {
+  async schluessel(passwort, salt, iter) {
+    const basis = await crypto.subtle.importKey('raw', new TextEncoder().encode(passwort), 'PBKDF2', false, ['deriveKey']);
+    return crypto.subtle.deriveKey(
+      { name: 'PBKDF2', salt: salt, iterations: iter, hash: 'SHA-256' },
+      basis, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+  },
+  async chiffriere(schluessel, obj) {
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv: iv }, schluessel, new TextEncoder().encode(JSON.stringify(obj)));
+    return { iv: iv, ct: ct };
+  },
+  async dechiffriere(schluessel, iv, ct) {
+    const buf = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: new Uint8Array(iv) }, schluessel, ct);
+    return JSON.parse(new TextDecoder().decode(buf));
+  },
+  async mkAusBytes(bytes) {
+    return crypto.subtle.importKey('raw', new Uint8Array(bytes), 'AES-GCM', true, ['encrypt', 'decrypt']);
+  },
+  async entpacke(passwortSchluessel, iv, ct) {
+    return crypto.subtle.decrypt({ name: 'AES-GCM', iv: new Uint8Array(iv) }, passwortSchluessel, ct);
+  }
+};
+/* Probiert die drei Rollen durch – wie zugangEntsperren() in der App. */
+async function zugangEntsperren(zugang, passwort) {
+  for (const feld of ['admin', 'arbeit', 'viewer']) {
+    const e = zugang && zugang[feld];
+    if (!e) continue;
+    try {
+      const k = await Krypto.schluessel(passwort, new Uint8Array(e.salt), zugang.iter || PBKDF2_ITER);
+      const mkBytes = new Uint8Array(await Krypto.entpacke(k, e.iv, base64ZuBytes(e.ct).buffer));
+      return { mk: await Krypto.mkAusBytes(mkBytes), rolle: feld };
+    } catch (err) { /* falsches Passwort für diese Rolle → nächste probieren */ }
+  }
+  throw new Error('Passwort passt zu keiner Rolle');
+}
+
+function dateiHerunterladen(text, name) {
+  const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
+  const a = document.createElement('a');
+  a.href = url; a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+}
+function fmtBytes(n) {
+  if (!n) return '0 B';
+  const e = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.min(e.length - 1, Math.floor(Math.log(n) / Math.log(1024)));
+  return (n / Math.pow(1024, i)).toFixed(i ? 1 : 0) + ' ' + e[i];
+}
+
+const el = id => document.getElementById(id);
+let ergebnisDateien = null;
+
+el('datei').onchange = () => { el('fehler').textContent = ''; pruefeBereit(); };
+el('pw').oninput = pruefeBereit;
+function pruefeBereit() {
+  el('los').disabled = !(el('datei').files[0] && el('pw').value);
+}
+
+el('los').onclick = async () => {
+  const f = el('datei').files[0];
+  const pw = el('pw').value;
+  el('fehler').textContent = '';
+  el('ergebnis').classList.remove('an');
+  el('los').disabled = true;
+  const alt = el('los').textContent;
+  el('los').textContent = 'Entschlüssele …';
+  try {
+    ergebnisDateien = await aufteilen(f, pw);
+    zeigeErgebnis(ergebnisDateien);
+    el('ergebnis').classList.add('an');
+  } catch (e) {
+    el('fehler').textContent = e.message;
+  } finally {
+    el('los').textContent = alt;
+    pruefeBereit();
+  }
+};
+
+/* Verschlüsselt beide Fassungen mit demselben Schlüsselmaterial, die Passwörter bleiben gültig. */
+async function aufteilen(datei, passwort) {
+  let d;
+  try { d = JSON.parse(await datei.text()); }
+  catch (e) { throw new Error('Das ist keine gültige JSON-Datei.'); }
+
+  if (d && d.format === 'sitzung-v1') {
+    throw new Error('Das ist eine Sitzungs-Übergabedatei (.brsitz.json), keine vollständige Sicherung. Diese lässt sich direkt über „Sitzung übernehmen" laden.');
+  }
+
+  let nutzlast, neuVerpacken;
+  if (d && d.format === 'enc-v2') {
+    if (!d.zugang) throw new Error('Der Sicherung fehlt der Zugangsblock – bitte in der App öffnen und neu sichern.');
+    let auf;
+    try { auf = await zugangEntsperren(d.zugang, passwort); }
+    catch (e) { throw new Error('Das Passwort passt nicht zu dieser Sicherung.'); }
+    try { nutzlast = await Krypto.dechiffriere(auf.mk, d.iv, base64ZuBytes(d.ct).buffer); }
+    catch (e) { throw new Error('Die Sicherung ist beschädigt und lässt sich nicht entschlüsseln.'); }
+    neuVerpacken = async (obj, modul) => {
+      const { iv, ct } = await Krypto.chiffriere(auf.mk, obj);
+      return JSON.stringify({ app: 'br-sitzungsmanager', format: 'enc-v2', modul: modul,
+        zugang: d.zugang, iv: Array.from(iv), ct: bytesZuBase64(new Uint8Array(ct)) });
+    };
+  } else if (d && d.format === 'enc-v1') {
+    let key;
+    try {
+      key = await Krypto.schluessel(passwort, new Uint8Array(d.kdf.salt), d.kdf.iter || PBKDF2_ITER);
+      nutzlast = await Krypto.dechiffriere(key, d.iv, base64ZuBytes(d.ct).buffer);
+    } catch (e) { throw new Error('Das Passwort passt nicht zu dieser Sicherung (Altformat enc-v1).'); }
+    neuVerpacken = async (obj, modul) => {
+      const { iv, ct } = await Krypto.chiffriere(key, obj);
+      return JSON.stringify({ app: 'br-sitzungsmanager', format: 'enc-v1', modul: modul,
+        kdf: d.kdf, iv: Array.from(iv), ct: bytesZuBase64(new Uint8Array(ct)) });
+    };
+  } else if (d && d.app === 'br-sitzungsmanager') {
+    nutzlast = d;                                    /* unverschlüsseltes Altformat */
+    neuVerpacken = async obj => JSON.stringify(obj);
+  } else {
+    throw new Error('Keine Sicherung dieses Programms.');
+  }
+
+  /* Der eigentliche Schnitt: Anlagen-Bytes bleiben beim Sitzungsmanager, Metadaten stehen in beiden Dateien. */
+  const inhalte = nutzlast.dokumentInhalte || {};
+  const fuerSitzungsmanager = nutzlast;
+  const fuerProtokoll = Object.assign({}, nutzlast, { dokumentInhalte: {} });
+
+  const anzahlAnlagen = Object.keys(inhalte).length;
+  let anlagenBytes = 0;
+  for (const id of Object.keys(inhalte)) anlagenBytes += Math.floor(inhalte[id].length * 3 / 4);
+
+  const basis = (datei.name || 'BR-Sicherung').replace(/\.(brenc\.)?json$/i, '');
+  const smText = await neuVerpacken(fuerSitzungsmanager, 'sitzung');
+  const pmText = await neuVerpacken(fuerProtokoll, 'protokoll');
+
+  return {
+    statistik: {
+      sitzungen: (nutzlast.sitzungen || []).length,
+      personen: (nutzlast.personen || []).length,
+      dokumente: (nutzlast.dokumente || []).length,
+      anlagen: anzahlAnlagen,
+      anlagenBytes: anlagenBytes,
+      revision: nutzlast.revision || 0,
+      smGroesse: smText.length,
+      pmGroesse: pmText.length
+    },
+    sm: { name: basis + '_Sitzungsmanager.brenc.json', text: smText },
+    pm: { name: basis + '_Protokoll.brenc.json', text: pmText }
+  };
+}
+
+function zeigeErgebnis(r) {
+  const s = r.statistik;
+  el('statistik').innerHTML =
+    '<tr><th>Angabe</th><th style="text-align:right">Wert</th></tr>' +
+    '<tr><td>Sitzungen</td><td class="zahl">' + s.sitzungen + '</td></tr>' +
+    '<tr><td>Personen (BR, SBV, JAV)</td><td class="zahl">' + s.personen + '</td></tr>' +
+    '<tr><td>Dokumente / Anlagen (Verweise)</td><td class="zahl">' + s.dokumente + '</td></tr>' +
+    '<tr><td>davon mit hinterlegter Datei</td><td class="zahl">' + s.anlagen + ' · ' + fmtBytes(s.anlagenBytes) + '</td></tr>' +
+    '<tr><td>Revision</td><td class="zahl">' + s.revision + '</td></tr>' +
+    '<tr><td>Sitzungsmanager-Datei</td><td class="zahl">' + fmtBytes(s.smGroesse) + '</td></tr>' +
+    '<tr><td>Protokoll-Datei (ohne Anlagen-Dateien)</td><td class="zahl">' + fmtBytes(s.pmGroesse) + '</td></tr>';
+  el('dlSm').onclick = () => dateiHerunterladen(r.sm.text, r.sm.name);
+  el('dlPm').onclick = () => dateiHerunterladen(r.pm.text, r.pm.name);
+}
+
+/* Für den automatisierten Test */
+window.WERKZEUG = { aufteilen, zugangEntsperren, Krypto, bytesZuBase64, base64ZuBytes };
+</script>
+</body>
+</html>

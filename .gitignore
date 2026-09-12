@@ -1,0 +1,31 @@
+# Die folgenden Muster ohne Schrägstrich greifen auf jeder Ebene – also auch für
+# die Dateien im Unterordner scripts/, in dem sie seit v0.33.0 liegen.
+
+# Zugang und Cryptodatei – werden vom Verschlüsselungsgenerator erzeugt und gehören
+# ausschließlich auf das geschützte BR-Laufwerk, nie in die Versionsverwaltung
+br-zugang.js
+key
+
+# Personenbezogene Daten. urlaub.beispiel.js ist die Vorlage und wird versioniert;
+# die gefüllte urlaub.js bleibt lokal.
+urlaub.js
+
+# Gremium: Stammdaten und Personen, verschlüsselt – gehört auf das BR-Laufwerk
+Gremium
+
+# Sicherungen und Übergabedateien (verschlüsselt, aber personenbezogen)
+*.brenc.json
+*.brsitz.json
+*.brto.json
+*.brerg.json
+
+
+# Erzeugtes
+br-sitzungsmanager*.zip
+graphify-out/
+
+# Die Anwendung selbst braucht kein npm – Node wird nur fuer die Tests benoetigt.
+# Das Repo bleibt deshalb manifestfrei; siehe README, Abschnitt „Tests".
+node_modules/
+package.json
+package-lock.json

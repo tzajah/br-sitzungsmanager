@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Abwesenheiten melden · Betriebsrat</title>
+<style>
+  :root{
+    --tinte:#17212B; --tinte-weich:#3C4854; --grau:#67727C; --hell:#98A1A9;
+    --papier:#F1F3F2; --linie:#DCE1DF; --linie-stark:#C6CDCA;
+    --akzent:#0E6B57; --akzent-dunkel:#0A5343; --akzent-hell:#E4EFEB;
+    --kopf:#152520; --kopf-text:#D9E2DD; --kopf-dim:#8FA39A;
+    --warn:#8A6A1C; --warn-bg:#F6EEDA; --gefahr:#A63A20; --gefahr-bg:#F7E7E1;
+    --radius:9px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+    background:var(--papier);color:var(--tinte);font-size:15px;line-height:1.5;
+    font-feature-settings:"tnum" 1;padding-bottom:60px}
+  button,input,select{font:inherit;color:inherit}
+  h1,h2{margin:0;font-weight:650;letter-spacing:-.01em}
+  :focus-visible{outline:2px solid var(--akzent);outline-offset:2px;border-radius:4px}
+
+  .kopf{background:var(--kopf);color:var(--kopf-text);padding:26px 20px 22px}
+  .innen{max-width:760px;margin:0 auto;padding:0 20px}
+  .kopf .innen{padding:0}
+  .kopf .ueberzeile{font-size:10.5px;letter-spacing:.15em;text-transform:uppercase;color:var(--kopf-dim)}
+  .kopf h1{font-size:24px;color:#fff;margin-top:3px}
+  .kopf p{color:var(--kopf-dim);font-size:14px;margin:8px 0 0;max-width:56ch}
+  .kopf .kante{height:5px;margin-top:16px;border-top:2px solid var(--akzent);
+    border-bottom:1px solid rgba(255,255,255,.28);max-width:180px}
+
+  .karte{background:#fff;border:1px solid var(--linie);border-radius:var(--radius);
+    margin:20px 0;box-shadow:0 1px 2px rgba(23,33,43,.05)}
+  .karte-kopf{padding:13px 18px;border-bottom:1px solid var(--linie);display:flex;
+    justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+  .karte-kopf h2{font-size:15px}
+  .karte-koerper{padding:16px 18px}
+  .karte-fuss{padding:11px 18px;border-top:1px solid var(--linie);font-size:12.5px;color:var(--grau)}
+
+  label{display:block;font-size:12px;font-weight:650;color:var(--tinte-weich);margin-bottom:4px}
+  input[type=text],input[type=date]{width:100%;padding:9px 11px;border:1px solid var(--linie-stark);
+    border-radius:7px;background:#fff}
+  input:disabled{background:#F5F7F6;color:var(--hell)}
+
+  .zeile{display:grid;grid-template-columns:1fr 1fr 1.4fr auto;gap:10px;align-items:end;
+    padding:12px 0;border-bottom:1px solid var(--linie)}
+  .zeile:last-of-type{border-bottom:none}
+  @media(max-width:680px){.zeile{grid-template-columns:1fr 1fr;}.zeile .weit{grid-column:1/-1}}
+
+  button{border:1px solid var(--linie-stark);background:#fff;border-radius:7px;
+    padding:9px 15px;cursor:pointer;font-weight:600;transition:background .15s ease}
+  button:hover:not(:disabled){background:#F5F7F6}
+  button:disabled{opacity:.5;cursor:not-allowed}
+  .btn-primaer{background:var(--akzent);border-color:var(--akzent);color:#fff}
+  .btn-primaer:hover:not(:disabled){background:var(--akzent-dunkel)}
+  .btn-gross{padding:12px 20px;font-size:16px}
+  .btn-weg{border-color:transparent;background:none;color:var(--gefahr);padding:9px 11px;font-weight:700}
+  .btn-weg:hover{background:var(--gefahr-bg)}
+  .reihe{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+
+  .hinweis{border:1px solid var(--linie);border-left:4px solid var(--akzent);border-radius:7px;
+    padding:11px 14px;font-size:13px;color:var(--tinte-weich);background:#FAFBFA;margin:12px 0}
+  .hinweis.warnung{border-left-color:var(--warn);background:var(--warn-bg);color:var(--warn)}
+  .meldung{min-height:1.4em;font-size:13.5px;margin-top:12px}
+  .meldung.gut{color:var(--akzent-dunkel)}
+  .meldung.schlecht{color:var(--gefahr)}
+  .klein{font-size:12.5px;color:var(--grau)}
+  .tage{font-size:12px;color:var(--grau);white-space:nowrap;padding-bottom:10px}
+  .tage.fehler{color:var(--gefahr);font-weight:650}
+  .leer{color:var(--grau);font-size:13.5px;padding:6px 0}
+  .fuss{max-width:760px;margin:26px auto 0;padding:0 20px;font-size:12px;color:var(--grau)}
+</style>
+</head>
+<body>
+
+<header class="kopf">
+  <div class="innen" style="max-width:760px;margin:0 auto">
+    <div class="ueberzeile">Betriebsrat</div>
+    <h1>Abwesenheiten melden</h1>
+    <p>Trage deine Urlaubs- und Abwesenheitszeiten ein und schicke die erzeugte Datei
+      an die Sitzungsleitung. Sie liest die Meldungen in den Sitzungsmanager ein, damit
+      Sitzungstermine nicht in deine Abwesenheit fallen.</p>
+    <div class="kante"></div>
+  </div>
+</header>
+
+<main class="innen">
+
+  <div class="karte">
+    <div class="karte-koerper">
+      <label for="name">Dein Name</label>
+      <input type="text" id="name" autocomplete="name" placeholder="Vorname Nachname">
+      <p class="klein" style="margin-top:6px">Bitte genau so schreiben wie in der Mitgliederliste des
+        Betriebsrats – sonst kann die Meldung nicht zugeordnet werden.</p>
+    </div>
+  </div>
+
+  <div class="karte">
+    <div class="karte-kopf">
+      <h2>Deine Abwesenheiten</h2>
+      <button id="neu">+ Zeitraum</button>
+    </div>
+    <div class="karte-koerper">
+      <div id="liste"></div>
+    </div>
+    <div class="karte-fuss">Beide Tage zählen mit: Wer vom 10. bis 28. einträgt, ist auch am 10. und
+      am 28. abwesend. Für einen einzelnen Tag Von und Bis gleich setzen.</div>
+  </div>
+
+  <div class="karte">
+    <div class="karte-koerper">
+      <div class="reihe">
+        <button class="btn-primaer btn-gross" id="speichern">Meldung speichern</button>
+        <button id="laden">Frühere Meldung öffnen …</button>
+        <input type="file" id="datei" accept=".json,application/json" hidden>
+      </div>
+      <div class="meldung" id="meldung"></div>
+      <div class="hinweis" style="margin-bottom:0">
+        <b>Und dann?</b> Die gespeicherte Datei per Mail oder über das BR-Laufwerk an die
+        Sitzungsleitung geben. Ändert sich etwas, einfach die frühere Meldung hier öffnen,
+        anpassen und neu speichern – die neue Meldung ersetzt die alte vollständig.
+      </div>
+      <div class="hinweis warnung" style="margin-bottom:0">
+        Die Datei ist <b>nicht verschlüsselt</b> und enthält deinen Namen und deine Zeiträume.
+        Behandle sie wie eine normale betriebsinterne Mitteilung.
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<p class="fuss">Läuft vollständig offline im Browser – es wird nichts gesendet und nichts
+  gespeichert außer der Datei, die du selbst ablegst. © 2026 Patrick Pählke</p>
+
+<script>
+'use strict';
+/* Bewusst ohne Passwort/Verschlüsselung, damit die Meldehürde niedrig bleibt. Format 'urlaub-v1',
+   eingelesen im Sitzungsmanager unter „Gremium & Mitglieder" → „Urlaubskalender" → „Meldungen einlesen …". */
+
+const el = id => document.getElementById(id);
+const NAME_MERKER = 'br-urlaub-melden.name';
+let eintraege = [];
+
+function heuteIso() {
+  const d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+function fmtDatum(iso) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso || '')) return '';
+  const [j, m, t] = iso.split('-');
+  return t + '.' + m + '.' + j;
+}
+function tageZwischen(von, bis) {
+  if (!von || !bis || bis < von) return 0;
+  return Math.round((new Date(bis) - new Date(von)) / 86400000) + 1;
+}
+function esc(s) {
+  return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function zeichne() {
+  const c = el('liste');
+  if (!eintraege.length) {
+    c.innerHTML = '<p class="leer">Noch kein Zeitraum eingetragen. Mit „+ Zeitraum" beginnen – ' +
+      'oder ohne Eintrag speichern, um „keine Abwesenheit" zu melden.</p>';
+    return;
+  }
+  c.innerHTML = eintraege.map((e, i) => {
+    const n = tageZwischen(e.von, e.bis);
+    const kaputt = e.von && e.bis && e.bis < e.von;
+    return '<div class="zeile" data-i="' + i + '">' +
+      '<div><label for="v' + i + '">Von</label><input type="date" id="v' + i + '" data-f="von" value="' + esc(e.von) + '"></div>' +
+      '<div><label for="b' + i + '">Bis</label><input type="date" id="b' + i + '" data-f="bis" value="' + esc(e.bis) + '"></div>' +
+      '<div class="weit"><label for="g' + i + '">Grund</label><input type="text" id="g' + i + '" data-f="grund" value="' + esc(e.grund) + '" placeholder="z. B. Urlaub, Fortbildung, Kur"></div>' +
+      '<div class="reihe">' +
+        '<span class="tage' + (kaputt ? ' fehler' : '') + '">' +
+          (kaputt ? 'Bis liegt vor Von' : n ? n + (n === 1 ? ' Tag' : ' Tage') : '') + '</span>' +
+        '<button class="btn-weg" data-tu="weg" title="Zeitraum entfernen" aria-label="Zeitraum entfernen">&#10005;</button>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+
+  c.querySelectorAll('.zeile').forEach(z => {
+    const i = parseInt(z.dataset.i, 10);
+    z.querySelectorAll('[data-f]').forEach(inp => {
+      inp.oninput = () => {
+        eintraege[i][inp.dataset.f] = inp.value;
+        /* Ein Bis vor dem Von ist fast immer ein Vertipper im Von-Feld. */
+        if (inp.dataset.f === 'von' && (!eintraege[i].bis || eintraege[i].bis < inp.value)) {
+          eintraege[i].bis = inp.value;
+        }
+        const merk = document.activeElement && document.activeElement.id;
+        zeichne();
+        const zurueck = merk && el(merk);
+        if (zurueck) zurueck.focus();
+      };
+    });
+    z.querySelector('[data-tu="weg"]').onclick = () => { eintraege.splice(i, 1); zeichne(); };
+  });
+}
+
+el('neu').onclick = () => {
+  eintraege.push({ von: heuteIso(), bis: heuteIso(), grund: 'Urlaub' });
+  zeichne();
+  const f = el('liste').querySelector('.zeile:last-of-type input[type=date]');
+  if (f) f.focus();
+};
+
+function sagen(text, gut) {
+  const m = el('meldung');
+  m.textContent = text;
+  m.className = 'meldung ' + (gut ? 'gut' : 'schlecht');
+}
+
+el('speichern').onclick = () => {
+  const name = el('name').value.trim().replace(/\s+/g, ' ');
+  if (!name) { sagen('Bitte zuerst deinen Namen eintragen.', false); el('name').focus(); return; }
+
+  const gueltig = eintraege
+    .map(e => ({ von: (e.von || '').slice(0, 10), bis: (e.bis || e.von || '').slice(0, 10), grund: (e.grund || '').trim() || 'Urlaub' }))
+    .filter(e => /^\d{4}-\d{2}-\d{2}$/.test(e.von) && /^\d{4}-\d{2}-\d{2}$/.test(e.bis) && e.bis >= e.von)
+    .sort((a, b) => a.von < b.von ? -1 : a.von > b.von ? 1 : 0);
+  const verworfen = eintraege.length - gueltig.length;
+
+  const inhalt = {
+    app: 'br-sitzungsmanager', format: 'urlaub-v1',
+    name: name, gemeldetAm: new Date().toISOString(), eintraege: gueltig
+  };
+  const dateiname = 'Urlaub_' + name.replace(/[^\wäöüÄÖÜß]+/g, '-') + '_' + heuteIso() + '.json';
+  const url = URL.createObjectURL(new Blob([JSON.stringify(inhalt, null, 2)], { type: 'application/json' }));
+  const a = document.createElement('a');
+  a.href = url; a.download = dateiname;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+
+  try { localStorage.setItem(NAME_MERKER, name); } catch (e) { /* egal */ }
+  sagen('„' + dateiname + '" gespeichert' +
+    (gueltig.length ? ' – ' + gueltig.length + ' Zeitraum/Zeiträume' : ' – ohne Abwesenheit') +
+    (verworfen ? '. ' + verworfen + ' unvollständige Zeile(n) wurden nicht übernommen' : '') +
+    '. Bitte an die Sitzungsleitung geben.', true);
+};
+
+el('laden').onclick = () => el('datei').click();
+el('datei').onchange = async e => {
+  const f = e.target.files[0]; e.target.value = '';
+  if (!f) return;
+  try {
+    const d = JSON.parse(await f.text());
+    if (!d || d.format !== 'urlaub-v1') throw new Error('Format');
+    el('name').value = String(d.name || '');
+    eintraege = (Array.isArray(d.eintraege) ? d.eintraege : [])
+      .map(x => ({ von: String(x.von || ''), bis: String(x.bis || ''), grund: String(x.grund || '') }));
+    zeichne();
+    sagen(eintraege.length + ' Zeitraum/Zeiträume aus „' + f.name + '" geladen. Jetzt anpassen und neu speichern.', true);
+  } catch (err) {
+    sagen('Das ist keine Meldung dieses Werkzeugs. Erwartet wird eine Datei, die hier gespeichert wurde.', false);
+  }
+};
+
+try { el('name').value = localStorage.getItem(NAME_MERKER) || ''; } catch (e) { /* egal */ }
+zeichne();
+
+/* Für den automatisierten Test */
+window.WERKZEUG = { get eintraege() { return eintraege; }, set eintraege(v) { eintraege = v; }, zeichne, tageZwischen };
+</script>
+</body>
+</html>

@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BR-Manager · Anlagen aufräumen</title>
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    max-width: 720px; margin: 6vh auto; padding: 0 20px; line-height: 1.5;
+    color: #1a1a1a; background: #f6f7f8;
+  }
+  @media (prefers-color-scheme: dark) { body { color: #e6e6e6; background: #16181c; } }
+  .karte {
+    background: Canvas; border: 1px solid rgba(128,128,128,.35); border-radius: 12px;
+    padding: 24px 26px; box-shadow: 0 1px 4px rgba(0,0,0,.08); margin-bottom: 18px;
+  }
+  h1 { font-size: 1.35rem; margin: 0 0 4px; }
+  h2 { font-size: 1.05rem; margin: 0 0 4px; }
+  .unter { color: #6b7280; margin: 0 0 18px; font-size: .92rem; }
+  label { display: block; font-weight: 600; margin: 14px 0 4px; font-size: .92rem; }
+  input[type=password], input[type=file] {
+    width: 100%; padding: 9px 11px; border: 1px solid rgba(128,128,128,.5);
+    border-radius: 8px; font-size: 1rem; background: Field; color: FieldText;
+  }
+  .hinweis { font-size: .82rem; color: #6b7280; margin-top: 3px; }
+  button {
+    font: inherit; cursor: pointer; border-radius: 8px; border: 1px solid transparent;
+    padding: 10px 16px; margin-top: 6px;
+  }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  .btn-primaer { background: #2563eb; color: #fff; font-weight: 600; }
+  .btn-primaer:hover:not(:disabled) { background: #1d4ed8; }
+  .btn-sek { background: transparent; border-color: rgba(128,128,128,.5); color: inherit; }
+  .btn-sek:hover:not(:disabled) { background: rgba(128,128,128,.12); }
+  .btn-gefahr { background: #b91c1c; color: #fff; font-weight: 600; }
+  .btn-gefahr:hover:not(:disabled) { background: #991b1b; }
+  .fehler { color: #dc2626; font-size: .9rem; margin-top: 10px; min-height: 1.2em; }
+  .gut { color: #15803d; font-size: .9rem; margin-top: 10px; min-height: 1.2em; }
+  .ergebnis { margin-top: 16px; padding-top: 14px; border-top: 1px solid rgba(128,128,128,.3); display: none; }
+  .ergebnis.an { display: block; }
+  .warn {
+    background: rgba(234,179,8,.15); border: 1px solid rgba(234,179,8,.5);
+    border-radius: 8px; padding: 10px 12px; font-size: .88rem; margin-top: 12px;
+  }
+  code { background: rgba(128,128,128,.18); padding: 1px 5px; border-radius: 4px; font-size: .9em; }
+  table { border-collapse: collapse; width: 100%; font-size: .9rem; margin-top: 10px; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid rgba(128,128,128,.25); }
+  th { font-weight: 600; color: #6b7280; }
+  td.zahl { text-align: right; font-variant-numeric: tabular-nums; }
+  .fuss { font-size: .8rem; color: #6b7280; }
+</style>
+</head>
+<body>
+
+<div class="karte">
+  <h1>Anlagen aufräumen</h1>
+  <p class="unter">Entfernt die gespeicherten <b>Anlagen-Dateien</b> (Blobs) aus dem Protokollmodul.
+    Die Verweise – Name, Nummer, Kategorie – bleiben überall erhalten, damit das Anlagenverzeichnis
+    in den PDFs vollständig bleibt. Die Dateien selbst gehören seit Version 0.27.0 in den
+    <b>BR-Sitzungsmanager</b>.</p>
+  <p style="font-size:.9rem;margin:0">Solche Dateien entstehen vor allem dadurch, dass die App
+    jedes erzeugte PDF automatisch mit archiviert. Im Protokollmodul ist dieser Automatismus
+    inzwischen abgeschaltet – die Altbestände räumt dieses Werkzeug weg.</p>
+</div>
+
+<div class="karte">
+  <h2>1. Aus einer Sicherungsdatei</h2>
+  <p class="unter">Erzeugt eine bereinigte Kopie. Passwörter und Revisionsnummer bleiben gültig.</p>
+
+  <label for="datei">Sicherung wählen (<code>.brenc.json</code>)</label>
+  <input type="file" id="datei" accept=".json,application/json">
+
+  <label for="pw">Passwort dieser Sicherung</label>
+  <input type="password" id="pw" autocomplete="off" placeholder="Arbeits-, Viewer- oder Debug-Mode-Passwort">
+  <p class="hinweis">Wird nur im Browser verwendet – diese Seite arbeitet vollständig offline.</p>
+
+  <button class="btn-primaer" id="los" disabled>Anlagen entfernen</button>
+  <div class="fehler" id="fehler"></div>
+
+  <div class="ergebnis" id="ergebnis">
+    <table id="statistik"></table>
+    <button class="btn-primaer" id="dl">Bereinigte Datei herunterladen</button>
+  </div>
+</div>
+
+<div class="karte">
+  <h2>2. Aus der Browser-Ablage</h2>
+  <p class="unter">Leert die im Browser <i>dieses</i> PCs gespeicherten Anlagen-Dateien.
+    Betrifft nur die Dateien, nicht Sitzungen, Protokolle oder Stammdaten.</p>
+
+  <button class="btn-sek" id="pruefen">Ablagen prüfen</button>
+  <div class="fehler" id="dbFehler"></div>
+  <div class="gut" id="dbGut"></div>
+
+  <div class="ergebnis" id="dbErgebnis">
+    <table id="dbStatistik"></table>
+    <div class="warn">
+      <b>Nicht umkehrbar.</b> Vorher eine Sicherung ablegen, falls die Dateien noch gebraucht
+      werden. Die Verweise in den Sitzungen bleiben erhalten; beim Öffnen einer Anlage im
+      Protokollmodul erscheint dann der Hinweis, dass die Datei im Sitzungsmanager liegt.
+    </div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <button class="btn-gefahr" id="leerenProtokoll" disabled>Protokoll-Ablage leeren</button>
+      <button class="btn-sek" id="leerenManager" disabled>Sitzungsmanager-Ablage leeren</button>
+    </div>
+    <p class="hinweis">Die Sitzungsmanager-Ablage ist normalerweise <b>zu behalten</b> – dort
+      gehören die Anlagen hin. Der Knopf ist nur für den Fall gedacht, dass dort Altlasten
+      aufgeräumt werden sollen.</p>
+  </div>
+</div>
+
+<p class="fuss">Läuft vollständig offline. Diese Datei kann nach dem Aufräumen liegen bleiben
+  oder gelöscht werden. © 2026 Patrick Pählke</p>
+
+<script>
+'use strict';
+/* Eigenständiges Werkzeug; Krypto-Bausteine und Datenbanknamen müssen mit br-app.js formatgleich bleiben. */
+
+const PBKDF2_ITER = 600000;
+const ABLAGEN = [
+  { db: 'br-sitzungsmanager-protokoll', label: 'Protokollmodul (BR-Protokoll.html)' },
+  { db: 'br-sitzungsmanager',           label: 'Sitzungsmanager (BR-Sitzungsmanager.html)' }
+];
+
+function bytesZuBase64(bytes) {
+  let s = ''; const teil = 0x8000;
+  for (let i = 0; i < bytes.length; i += teil) s += String.fromCharCode.apply(null, bytes.subarray(i, i + teil));
+  return btoa(s);
+}
+function base64ZuBytes(b64) {
+  const bin = atob(b64); const arr = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+  return arr;
+}
+const Krypto = {
+  async schluessel(passwort, salt, iter) {
+    const basis = await crypto.subtle.importKey('raw', new TextEncoder().encode(passwort), 'PBKDF2', false, ['deriveKey']);
+    return crypto.subtle.deriveKey({ name: 'PBKDF2', salt: salt, iterations: iter, hash: 'SHA-256' },
+      basis, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+  },
+  async chiffriere(schluessel, obj) {
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv: iv }, schluessel, new TextEncoder().encode(JSON.stringify(obj)));
+    return { iv: iv, ct: ct };
+  },
+  async dechiffriere(schluessel, iv, ct) {
+    const buf = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: new Uint8Array(iv) }, schluessel, ct);
+    return JSON.parse(new TextDecoder().decode(buf));
+  },
+  async mkAusBytes(bytes) {
+    return crypto.subtle.importKey('raw', new Uint8Array(bytes), 'AES-GCM', true, ['encrypt', 'decrypt']);
+  },
+  async entpacke(passwortSchluessel, iv, ct) {
+    return crypto.subtle.decrypt({ name: 'AES-GCM', iv: new Uint8Array(iv) }, passwortSchluessel, ct);
+  }
+};
+async function zugangEntsperren(zugang, passwort) {
+  for (const feld of ['admin', 'arbeit', 'viewer']) {
+    const e = zugang && zugang[feld];
+    if (!e) continue;
+    try {
+      const k = await Krypto.schluessel(passwort, new Uint8Array(e.salt), zugang.iter || PBKDF2_ITER);
+      const mkBytes = new Uint8Array(await Krypto.entpacke(k, e.iv, base64ZuBytes(e.ct).buffer));
+      return { mk: await Krypto.mkAusBytes(mkBytes), rolle: feld };
+    } catch (err) { /* falsches Passwort für diese Rolle -> nächste probieren */ }
+  }
+  throw new Error('Passwort passt zu keiner Rolle');
+}
+function dateiHerunterladen(text, name) {
+  const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
+  const a = document.createElement('a');
+  a.href = url; a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+}
+function fmtBytes(n) {
+  if (!n) return '0 B';
+  const e = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.min(e.length - 1, Math.floor(Math.log(n) / Math.log(1024)));
+  return (n / Math.pow(1024, i)).toFixed(i ? 1 : 0) + ' ' + e[i];
+}
+const el = id => document.getElementById(id);
+
+/* Verschlüsselt die bereinigte Sicherung mit demselben Schlüsselmaterial wieder, die Passwörter bleiben gültig. */
+async function anlagenAusDatei(datei, passwort) {
+  let d;
+  try { d = JSON.parse(await datei.text()); }
+  catch (e) { throw new Error('Das ist keine gültige JSON-Datei.'); }
+
+  let nutzlast, neuVerpacken;
+  if (d && d.format === 'enc-v2') {
+    if (!d.zugang) throw new Error('Der Sicherung fehlt der Zugangsblock – bitte in der App öffnen und neu sichern.');
+    let auf;
+    try { auf = await zugangEntsperren(d.zugang, passwort); }
+    catch (e) { throw new Error('Das Passwort passt nicht zu dieser Sicherung.'); }
+    try { nutzlast = await Krypto.dechiffriere(auf.mk, d.iv, base64ZuBytes(d.ct).buffer); }
+    catch (e) { throw new Error('Die Sicherung ist beschädigt und lässt sich nicht entschlüsseln.'); }
+    neuVerpacken = async obj => {
+      const { iv, ct } = await Krypto.chiffriere(auf.mk, obj);
+      return JSON.stringify({ app: 'br-sitzungsmanager', format: 'enc-v2', modul: d.modul || null,
+        zugang: d.zugang, iv: Array.from(iv), ct: bytesZuBase64(new Uint8Array(ct)) });
+    };
+  } else if (d && d.format === 'enc-v1') {
+    let key;
+    try {
+      key = await Krypto.schluessel(passwort, new Uint8Array(d.kdf.salt), d.kdf.iter || PBKDF2_ITER);
+      nutzlast = await Krypto.dechiffriere(key, d.iv, base64ZuBytes(d.ct).buffer);
+    } catch (e) { throw new Error('Das Passwort passt nicht zu dieser Sicherung (Altformat enc-v1).'); }
+    neuVerpacken = async obj => {
+      const { iv, ct } = await Krypto.chiffriere(key, obj);
+      return JSON.stringify({ app: 'br-sitzungsmanager', format: 'enc-v1',
+        kdf: d.kdf, iv: Array.from(iv), ct: bytesZuBase64(new Uint8Array(ct)) });
+    };
+  } else if (d && d.app === 'br-sitzungsmanager' && d.sitzungen) {
+    nutzlast = d;                                    /* unverschlüsseltes Altformat */
+    neuVerpacken = async obj => JSON.stringify(obj);
+  } else if (d && d.format) {
+    throw new Error('Das ist eine Übergabedatei, keine vollständige Sicherung. Übergabedateien enthalten keine Anlagen-Dateien.');
+  } else {
+    throw new Error('Keine Sicherung dieses Programms.');
+  }
+
+  const inhalte = nutzlast.dokumentInhalte || {};
+  const anzahl = Object.keys(inhalte).length;
+  let bytes = 0;
+  for (const id of Object.keys(inhalte)) bytes += Math.floor(inhalte[id].length * 3 / 4);
+
+  /* Nur die Dateien entfernen – dokumente[] bleibt als Verweisliste stehen. */
+  const bereinigt = Object.assign({}, nutzlast, { dokumentInhalte: {} });
+  const text = await neuVerpacken(bereinigt);
+  const basis = (datei.name || 'BR-Sicherung').replace(/\.(brenc\.)?json$/i, '');
+
+  return {
+    statistik: { anzahl: anzahl, bytes: bytes,
+                 verweise: (nutzlast.dokumente || []).length,
+                 vorher: (await datei.text()).length, nachher: text.length },
+    name: basis + '_ohne-Anlagen.brenc.json', text: text
+  };
+}
+
+el('datei').onchange = () => { el('fehler').textContent = ''; bereit(); };
+el('pw').oninput = bereit;
+function bereit() { el('los').disabled = !(el('datei').files[0] && el('pw').value); }
+
+el('los').onclick = async () => {
+  el('fehler').textContent = '';
+  el('ergebnis').classList.remove('an');
+  el('los').disabled = true;
+  const alt = el('los').textContent;
+  el('los').textContent = 'Entschlüssele …';
+  try {
+    const r = await anlagenAusDatei(el('datei').files[0], el('pw').value);
+    const s = r.statistik;
+    el('statistik').innerHTML =
+      '<tr><th>Angabe</th><th style="text-align:right">Wert</th></tr>' +
+      '<tr><td>Entfernte Anlagen-Dateien</td><td class="zahl">' + s.anzahl + '</td></tr>' +
+      '<tr><td>Eingesparte Datenmenge</td><td class="zahl">' + fmtBytes(s.bytes) + '</td></tr>' +
+      '<tr><td>Erhaltene Verweise</td><td class="zahl">' + s.verweise + '</td></tr>' +
+      '<tr><td>Datei vorher / nachher</td><td class="zahl">' + fmtBytes(s.vorher) + ' / ' + fmtBytes(s.nachher) + '</td></tr>';
+    el('dl').onclick = () => dateiHerunterladen(r.text, r.name);
+    el('ergebnis').classList.add('an');
+    if (!s.anzahl) el('fehler').textContent = 'Hinweis: Diese Sicherung enthielt bereits keine Anlagen-Dateien.';
+  } catch (e) {
+    el('fehler').textContent = e.message;
+  } finally {
+    el('los').textContent = alt;
+    bereit();
+  }
+};
+
+/* Unter file:// teilen sich alle lokal geöffneten Seiten einen Ursprung, daher dieselben Datenbanken wie die beiden Anwendungen; Blobs bleiben dabei stets verschlüsselt. */
+
+function dbOeffnen(name) {
+  return new Promise((ok, err) => {
+    /* Ohne Versionsangabe geöffnet, damit keine vorhandene Datenbank ein Schema-Upgrade auslöst. */
+    const r = indexedDB.open(name);
+    r.onsuccess = () => ok(r.result);
+    r.onerror = () => err(r.error);
+    r.onblocked = () => err(new Error('Die Datenbank ist in einem anderen Tab geöffnet – bitte dort schließen.'));
+  });
+}
+
+/* Liefert null, wenn der Browser die Liste nicht auflisten kann - sonst würde indexedDB.open() eine leere Datenbank anlegen, nur um ihre Abwesenheit festzustellen. */
+async function vorhandeneDbs() {
+  if (!indexedDB.databases) return null;
+  try { return (await indexedDB.databases()).map(d => d.name); }
+  catch (e) { return null; }
+}
+
+async function ablageZaehlen(name, bekannt) {
+  const liste = bekannt === undefined ? await vorhandeneDbs() : bekannt;
+  if (liste && !liste.includes(name)) return { fehlt: true, anzahl: 0, bytes: 0 };
+  let db;
+  try { db = await dbOeffnen(name); }
+  catch (e) { return { fehlt: true, anzahl: 0, bytes: 0 }; }
+  if (!db.objectStoreNames.contains('dokumente')) {
+    db.close();
+    if (!liste) try { indexedDB.deleteDatabase(name); } catch (e) { /* egal */ }
+    return { fehlt: true, anzahl: 0, bytes: 0 };
+  }
+  const werte = await new Promise((ok, err) => {
+    const g = db.transaction('dokumente', 'readonly').objectStore('dokumente').getAll();
+    g.onsuccess = () => ok(g.result || []);
+    g.onerror = () => err(g.error);
+  });
+  db.close();
+  /* Groesse aus dem Chiffrat schaetzen – entschluesselt wird nichts. */
+  const bytes = werte.reduce((n, r) => n + ((r && r.ct && r.ct.byteLength) || (r && r.ct && r.ct.length) || 0), 0);
+  return { fehlt: false, anzahl: werte.length, bytes: bytes };
+}
+
+async function ablageLeeren(name) {
+  const db = await dbOeffnen(name);
+  if (!db.objectStoreNames.contains('dokumente')) { db.close(); return 0; }
+  const anzahl = await new Promise((ok, err) => {
+    const st = db.transaction('dokumente', 'readwrite').objectStore('dokumente');
+    const z = st.count();
+    z.onsuccess = () => { const c = st.clear(); c.onsuccess = () => ok(z.result); c.onerror = () => err(c.error); };
+    z.onerror = () => err(z.error);
+  });
+  db.close();
+  return anzahl;
+}
+
+let stand = null;
+el('pruefen').onclick = async () => {
+  el('dbFehler').textContent = ''; el('dbGut').textContent = '';
+  try {
+    const bekannt = await vorhandeneDbs();
+    stand = [];
+    for (const a of ABLAGEN) stand.push(Object.assign({}, a, await ablageZaehlen(a.db, bekannt)));
+    el('dbStatistik').innerHTML =
+      '<tr><th>Ablage</th><th style="text-align:right">Anlagen-Dateien</th><th style="text-align:right">Umfang</th></tr>' +
+      stand.map(s => '<tr><td>' + s.label + '</td>' +
+        '<td class="zahl">' + (s.fehlt ? '–' : s.anzahl) + '</td>' +
+        '<td class="zahl">' + (s.fehlt ? 'nicht vorhanden' : fmtBytes(s.bytes)) + '</td></tr>').join('');
+    el('leerenProtokoll').disabled = !(stand[0].anzahl);
+    el('leerenManager').disabled = !(stand[1].anzahl);
+    el('dbErgebnis').classList.add('an');
+    if (!stand[0].anzahl && !stand[1].anzahl) el('dbGut').textContent = 'Nichts aufzuräumen – beide Ablagen enthalten keine Anlagen-Dateien.';
+  } catch (e) {
+    el('dbFehler').textContent = 'Die Ablagen konnten nicht gelesen werden: ' + e.message;
+  }
+};
+
+function leerenKnopf(knopfId, index) {
+  el(knopfId).onclick = async () => {
+    const s = stand[index];
+    if (!confirm('Aus „' + s.label + '" werden ' + s.anzahl + ' Anlagen-Datei(en) (' +
+                 fmtBytes(s.bytes) + ') endgültig entfernt.\n\nDie Verweise in den Sitzungen bleiben erhalten.\n\nFortfahren?')) return;
+    el('dbFehler').textContent = ''; el('dbGut').textContent = '';
+    el(knopfId).disabled = true;
+    try {
+      const weg = await ablageLeeren(s.db);
+      el('dbGut').textContent = weg + ' Anlagen-Datei(en) aus „' + s.label + '" entfernt.';
+      await el('pruefen').onclick();
+    } catch (e) {
+      el('dbFehler').textContent = 'Aufräumen fehlgeschlagen: ' + e.message;
+      el(knopfId).disabled = false;
+    }
+  };
+}
+leerenKnopf('leerenProtokoll', 0);
+leerenKnopf('leerenManager', 1);
+
+/* Für den automatisierten Test */
+window.WERKZEUG = { anlagenAusDatei, ablageZaehlen, ablageLeeren, vorhandeneDbs, ABLAGEN,
+                    Krypto, bytesZuBase64, base64ZuBytes, zugangEntsperren };
+</script>
+</body>
+</html>
