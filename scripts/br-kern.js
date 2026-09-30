@@ -564,6 +564,7 @@ function leeresProjekt() {
       gremiumGroesse: 9,
       vertraulich: true,
       nachrichtlich: 'Schwerbehindertenvertretung, Jugend- und Auszubildendenvertretung',
+      verteiler: '',   /* optionaler E-Mail-Verteiler der ordentlichen Mitglieder */
       logo: null
     },
     personen: [],

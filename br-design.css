@@ -604,6 +604,15 @@ dialog.klein{max-width:480px}
   font-weight:600;letter-spacing:.04em;color:var(--tinte-weich);cursor:pointer;
   transition:border-color var(--uebergang),background var(--uebergang)}
 .dlg-nav button:hover{border-color:var(--akzent);color:var(--akzent-dunkel);background:var(--akzent-hell)}
+.dlg-nav button[aria-selected="true"]{background:var(--kante);border-color:var(--kante);color:#fff}
+/* Admin-Menü: ein Reiter je Bereich */
+.adm-reiter .dlg-sektion{margin-top:0}
+.adm-reiter .dlg-sektion.adm-zweite{margin-top:calc(var(--takt) * 8)}
+.adm-knoepfe{display:flex;gap:calc(var(--takt) * 2);flex-wrap:wrap;margin-top:calc(var(--takt) * 2.5)}
+.adm-datei{display:flex;gap:calc(var(--takt) * 2) calc(var(--takt) * 4);align-items:center;flex-wrap:wrap;
+  margin-top:calc(var(--takt) * 3);padding:calc(var(--takt) * 2) calc(var(--takt) * 2.5);border:1px dashed var(--linie-stark)}
+.adm-datei > span:first-child{flex:1 1 280px}
+.adm-datei-knoepfe{display:flex;gap:calc(var(--takt) * 2);flex-wrap:wrap}
 .dlg-sektion{font-family:var(--schrift-kennfeld);font-size:13px;letter-spacing:.1em;text-transform:uppercase;
   color:var(--tinte);scroll-margin-top:96px;border-bottom:1px solid var(--linie);padding-bottom:calc(var(--takt) * 1.5)}
 

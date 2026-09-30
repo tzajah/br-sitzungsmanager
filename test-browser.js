@@ -412,7 +412,7 @@ async function pruefeUebergabe() {
       return { meldungen: raus, dlgOffen: dlgOffen, nachRender: nachRender };
     })()
   `);
-  assert.ok(!gesperrt.dlgOffen, 'das Debug-Panel öffnet im Protokollmodul nicht');
+  assert.ok(!gesperrt.dlgOffen, 'das Admin-Menü öffnet im Protokollmodul nicht');
   assert.ok(gesperrt.meldungen[0].includes('BR-Sitzungsmanager'), 'mit Verweis auf den Manager');
   assert.ok(gesperrt.meldungen[1].includes('Anlagen-Dateien liegen'), 'Dokumente-Knopf verweist auf den Manager');
   assert.strictEqual(gesperrt.nachRender, 'sitzung', 'eine geerbte Dokumenten-Ansicht wird abgefangen');
@@ -766,7 +766,7 @@ async function pruefeStandardUnterpunkte() {
   console.log('OK  Standard-TOPs mit Unterpunkten: anlegen, extern pflegen, im Panel bearbeiten');
 }
 
-/* Urlaubskalender im Debug-Panel */
+/* Urlaubskalender im Admin-Menü */
 async function pruefeUrlaubEditor() {
   const browser = await chromium.launch();
   const seite = await browser.newPage();
@@ -926,7 +926,7 @@ async function pruefeUrlaubEditor() {
   await seite.evaluate(`document.getElementById('dlgStammdaten').close()`);
   assert.deepStrictEqual(fehler, [], 'keine Laufzeitfehler');
   await browser.close();
-  console.log('OK  Urlaubskalender im Debug-Panel: erfassen, aufräumen, als urlaub.js ausgeben');
+  console.log('OK  Urlaubskalender im Admin-Menü: erfassen, aufräumen, als urlaub.js ausgeben');
 }
 
 /* Anwesenheitsliste: Ausfüllfelder vollständig, aber keine Leerzeilen für nicht geladene Personen */
@@ -1366,7 +1366,7 @@ async function pruefeGremium() {
   assert.ok(!erzeugt.text.includes('Erika Mustermann'), 'auch keine Personennamen im Klartext');
   assert.ok(erzeugt.felder.includes('personen') && erzeugt.felder.includes('stammdaten') &&
             erzeugt.felder.includes('kategorien') && erzeugt.felder.includes('beschlussVorlagen'),
-    'alle Angaben aus „Gremium & Mitglieder" sind enthalten');
+    'alle Angaben aus dem Admin-Menü sind enthalten');
 
   const uebernommen = await pm.evaluate(`
     (async () => {
@@ -1984,6 +1984,96 @@ async function pruefeUnterpunktKategorieBeteiligungBeginn() {
   console.log('OK  Unterpunkt-Kategorie, Beteiligung je Beschluss, tatsächlicher Sitzungsbeginn');
 }
 
+/* Admin-Menü: nur im Debug-Mode, ein Reiter je Bereich, merkt sich den zuletzt gewählten */
+async function pruefeAdminMenue() {
+  const browser = await chromium.launch();
+  const seite = await browser.newPage();
+  const fehler = [];
+  seite.on('pageerror', e => fehler.push(e.message));
+  await seite.goto(DATEI('BR-Sitzungsmanager.html'));
+  await seite.waitForFunction('typeof APP_MODUS !== "undefined"', null, { timeout: 5000 });
+  await seite.evaluate(AUFBAU);
+
+  const erg = await seite.evaluate(`
+    (() => {
+      const dlg = document.getElementById('dlgStammdaten');
+      const knopf = document.getElementById('btnStammdaten');
+      aktualisiereRollenUi();
+      const arbeitKnopf = knopf.style.display;
+      oeffneStammdaten();
+      const arbeitOffen = dlg.open;
+
+      sitzungsRolle = 'admin';
+      aktualisiereRollenUi();
+      ui.adminReiter = undefined;
+      oeffneStammdaten();
+      const sichtbar = () => Array.from(dlg.querySelectorAll('.adm-reiter')).filter(s => !s.hidden).map(s => s.dataset.reiter);
+      const reiter = Array.from(dlg.querySelectorAll('.dlg-nav [data-reiter]')).map(b => b.textContent);
+      const start = sichtbar();
+      dlg.querySelector('.dlg-nav [data-reiter="urlaub"]').click();
+      const nachKlick = sichtbar();
+      const gewaehlt = dlg.querySelector('.dlg-nav [aria-selected="true"]').dataset.reiter;
+      const urlaubSichtbar = !!dlg.querySelector('#sdUrlaub').offsetParent;
+      const gremiumVerdeckt = !dlg.querySelector('#sdGremium').offsetParent;
+      dlg.querySelector('#sdFertig').click();
+      oeffneStammdaten();
+      const wiederOffen = sichtbar();
+      const resetImReiter = dlg.querySelector('#sdReset').closest('.adm-reiter').dataset.reiter;
+      const resetImFuss = !!dlg.querySelector('.dlg-fuss #sdReset');
+      dlg.close();
+      return {
+        arbeitKnopf, arbeitOffen, adminKnopf: knopf.style.display, titel: knopf.textContent.trim(),
+        kopf: dlg.querySelector('.dlg-kopf h3').textContent,
+        reiter, start, nachKlick, gewaehlt, urlaubSichtbar, gremiumVerdeckt, wiederOffen, resetImReiter, resetImFuss
+      };
+    })()
+  `);
+  assert.strictEqual(erg.arbeitKnopf, 'none', 'im Arbeitsmodus ist der Knopf ausgeblendet');
+  assert.ok(!erg.arbeitOffen, 'im Arbeitsmodus öffnet das Admin-Menü nicht');
+  assert.strictEqual(erg.adminKnopf, '', 'im Debug-Mode ist der Knopf sichtbar');
+  assert.strictEqual(erg.titel, 'Admin-Menü');
+  assert.strictEqual(erg.kopf, 'Admin-Menü');
+  assert.deepStrictEqual(erg.reiter, ['Gremium', 'Personen', 'Tagesordnung', 'Textbausteine', 'Beschluss-Tags', 'Urlaub', 'Zugang & System']);
+  assert.deepStrictEqual(erg.start, ['gremium'], 'es ist immer genau ein Bereich sichtbar');
+  assert.deepStrictEqual(erg.nachKlick, ['urlaub']);
+  assert.strictEqual(erg.gewaehlt, 'urlaub', 'der Reiter ist als gewählt markiert');
+  assert.ok(erg.urlaubSichtbar && erg.gremiumVerdeckt);
+  assert.deepStrictEqual(erg.wiederOffen, ['urlaub'], 'beim erneuten Öffnen geht es beim letzten Reiter weiter');
+  assert.strictEqual(erg.resetImReiter, 'zugang', 'Zurücksetzen steht im Gefahrenbereich, nicht mehr neben „Fertig"');
+  assert.ok(!erg.resetImFuss);
+
+  const mail = await seite.evaluate(`
+    (() => {
+      daten.personen = [
+        { id: 'o1', name: 'Ordentlich Eins', gruppe: 'br', funktion: 'Vorsitzende/r', aktiv: true, email: 'eins@firma.de' },
+        { id: 'o2', name: 'Ordentlich Zwei', gruppe: 'br', funktion: 'Mitglied', aktiv: true, email: 'zwei@firma.de' },
+        { id: 'e1', name: 'Ersatz Eins', gruppe: 'br', funktion: 'Ersatzmitglied', aktiv: true, email: 'ersatz@firma.de' },
+        { id: 'x1', name: 'Ausgeschieden', gruppe: 'br', funktion: 'Ersatzmitglied', aktiv: false, email: 'alt@firma.de' }
+      ];
+      const s = daten.sitzungen[0];
+      const ohne = einladungEmpfaenger(daten, s);
+      const dlg = document.getElementById('dlgStammdaten');
+      oeffneStammdaten();
+      dlg.querySelector('.dlg-nav [data-reiter="gremium"]').click();
+      const feld = dlg.querySelector('#sdVerteiler');
+      feld.value = ' br-verteiler@firma.de ';
+      feld.dispatchEvent(new Event('input', { bubbles: true }));
+      dlg.close();
+      const mit = einladungEmpfaenger(daten, s);
+      const to = erzeugeEinladungEml(daten, s).split(String.fromCharCode(13, 10)).find(z => z.startsWith('To: '));
+      return { ohne, mit, to, gespeichert: daten.stammdaten.verteiler };
+    })()
+  `);
+  assert.deepStrictEqual(mail.ohne, ['eins@firma.de', 'zwei@firma.de', 'ersatz@firma.de'], 'ohne Verteiler: alle aktiven einzeln');
+  assert.strictEqual(mail.gespeichert, 'br-verteiler@firma.de', 'der Verteiler wird im Admin-Menü gespeichert');
+  assert.deepStrictEqual(mail.mit, ['br-verteiler@firma.de', 'ersatz@firma.de'],
+    'mit Verteiler: der Verteiler statt der ordentlichen Mitglieder, Ersatzmitglieder weiter einzeln');
+  assert.strictEqual(mail.to, 'To: br-verteiler@firma.de, ersatz@firma.de');
+  assert.deepStrictEqual(fehler, [], 'keine Laufzeitfehler');
+  await browser.close();
+  console.log('OK  Admin-Menü: nur im Debug-Mode, Reiter je Bereich; Einladung über den Verteiler');
+}
+
 /* Formatgleichheit: Die Werkzeugseiten führen eigene Kopien des Krypto-Kerns. Hier schreibt und liest die echte App
    (sicherungVerpacken/sicherungEntpacken, zugangErzeugen) – ohne br-zugang.js, also auch in einem frischen Klon. */
 async function pruefeFormatgleichheit() {
@@ -2091,6 +2181,7 @@ async function pruefeFormatgleichheit() {
   await pruefeAufraeumen();
   await pruefeFormatgleichheit();
   await pruefeUnterpunktKategorieBeteiligungBeginn();
+  await pruefeAdminMenue();
   await pruefeAnmeldung();
   await pruefeErstinbetriebnahme();
   await pruefeVerlaufUmbrueche();

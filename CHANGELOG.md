@@ -7,7 +7,29 @@ veröffentlichten Releases).
 
 ## [Unreleased]
 
+### Geändert (Admin-Menü)
+- **„Gremium & Mitglieder“ heißt jetzt „Admin-Menü“** – mit Zahnrad-Symbol in der
+  Seitenleiste. Es bleibt dem Debug-Mode vorbehalten und dem Sitzungsmanager; im
+  Arbeitsmodus und im Protokollmodul ist der Knopf ausgeblendet. Das gilt jetzt auch für den
+  Knopf auf der Startseite, der bisher allen angeboten wurde und im Arbeitsmodus nur eine
+  Fehlermeldung brachte.
+- **Reiter statt einer langen Seite.** Die bisher neun untereinander stehenden Abschnitte sind
+  auf sieben Reiter verteilt: Gremium · Personen · Tagesordnung (Standard-TOPs und
+  Kategorien) · Textbausteine (für Protokolle und Beschlüsse) · Beschluss-Tags · Urlaub ·
+  Zugang & System. Es ist immer nur ein Bereich sichtbar; beim erneuten Öffnen geht es beim
+  zuletzt gewählten Reiter weiter.
+- **Aufgeräumt:** Die Hinweistexte sind gekürzt; der bei jeder Liste wiederholte Absatz zur
+  Nachbardatei in „scripts“ steht jetzt einheitlich als eigene Zeile samt „herunterladen“ und
+  „Datei laden …“ darunter. **„Alle Daten zurücksetzen“ steht nicht mehr neben „Fertig“**,
+  sondern im Gefahrenbereich unter „Zugang & System“. Unten bleiben nur „Gremium-Datei
+  erzeugen“ und „Fertig“.
+
 ### Hinzugefügt
+- **E-Mail-Verteiler des Gremiums** (Admin-Menü → „Gremium“, optional). Ist er hinterlegt,
+  lädt die Einladungs-Mail die ordentlichen Mitglieder über den Verteiler statt über ihre
+  Einzeladressen ein. Ersatzmitglieder stehen nicht im Verteiler und werden immer über ihre
+  eigene Adresse eingeladen; ebenso die als Gast geladene SBV und JAV. Ohne Verteiler bleibt
+  alles wie bisher. Der Verteiler gehört zu den Stammdaten und reist mit der Datei „Gremium“.
 - **Unterpunkte haben eine eigene Kategorie** – in der Sitzung wie bei den Standard-TOPs.
   Im Reiter „Tagesordnung“ steht unter dem Titel jedes Unterpunkts die Auswahl „Art des
   Unterpunkts“, im Standard-TOP-Editor eine Auswahl neben dem Titel. Ein neu angelegter

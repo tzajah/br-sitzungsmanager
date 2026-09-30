@@ -9,7 +9,7 @@ function pdfDateiname(praefix, s) {
 
 function exportPruefungen(s) {
   const p = [];
-  if (!aktiveMitglieder(daten).length) p.push('Es sind keine Mitglieder erfasst („Gremium & Mitglieder") – Anwesenheitsliste und Teilnahmeübersicht bleiben leer.');
+  if (!aktiveMitglieder(daten).length) p.push('Es sind keine Mitglieder erfasst (Admin-Menü → „Personen") – Anwesenheitsliste und Teilnahmeübersicht bleiben leer.');
   if (!s.datum) p.push('Die Sitzung hat noch kein Datum.');
   if (!s.tops.length) p.push('Die Tagesordnung enthält noch keine Punkte.');
   const q = quorumInfo(daten, s);
@@ -93,10 +93,16 @@ function renderTabExport(c, s) {
 }
 
 /* Empfänger: aktive BR-Mitglieder + als Gast erfasste SBV/JAV-Personen (Gäste selbst haben keine E-Mail). */
+/* Ordentliche Mitglieder über den Verteiler, falls hinterlegt – sonst einzeln. Ersatzmitglieder stehen nicht im
+   Verteiler und werden deshalb immer über ihre eigene Adresse eingeladen. */
 function einladungEmpfaenger(daten, s) {
   const map = new Map();
   const add = email => { const e = (email || '').trim(); if (e) map.set(e.toLowerCase(), e); };
-  personenDerGruppe(daten, 'br').filter(p => p.aktiv !== false).forEach(p => add(p.email));
+  const verteiler = ((daten.stammdaten || {}).verteiler || '').trim();
+  add(verteiler);
+  personenDerGruppe(daten, 'br').filter(p => p.aktiv !== false)
+    .filter(p => !verteiler || p.funktion === 'Ersatzmitglied')
+    .forEach(p => add(p.email));
   const gastNamen = new Set(((s || {}).gaeste || []).map(g => (g.name || '').trim().toLowerCase()).filter(Boolean));
   for (const gruppe of ['sbv', 'jav']) {
     for (const p of aktivePersonen(daten, gruppe)) {
@@ -192,7 +198,7 @@ async function starteEinladungEml(btn, s) {
     const name = pdfDateiname('Einladung', s).replace(/\.pdf$/i, '') + '.eml';
     dateiHerunterladen(new Blob([eml], { type: 'message/rfc822' }), name);
     const n = einladungEmpfaenger(daten, s).length;
-    zeigeToast('E-Mail-Datei erstellt' + (n ? ' (' + n + ' Empfänger)' : ' – noch keine BR-E-Mail-Adressen hinterlegt') + '.', 'erfolg');
+    zeigeToast('E-Mail-Datei erstellt' + (n ? ' (' + n + ' Empfänger)' : ' – weder Verteiler noch BR-E-Mail-Adressen hinterlegt') + '.', 'erfolg');
   } catch (e) {
     console.error(e);
     zeigeToast('E-Mail konnte nicht erstellt werden: ' + (e && e.message ? e.message : e), 'fehler');
@@ -521,139 +527,146 @@ async function starteExport(btn, art, s) {
   }
 }
 
-/* Stammdaten-Dialog */
+/* Admin-Menü (nur Debug-Mode, nur Sitzungsmanager): je Bereich ein Reiter statt einer langen Seite. */
+const ADMIN_REITER = [
+  ['gremium', 'Gremium'], ['personen', 'Personen'], ['tagesordnung', 'Tagesordnung'],
+  ['textbausteine', 'Textbausteine'], ['tags', 'Beschluss-Tags'], ['urlaub', 'Urlaub'], ['zugang', 'Zugang & System']
+];
+
+function adminReiterHtml(id, inhalt) {
+  return '<section class="adm-reiter" data-reiter="' + id + '" role="tabpanel" hidden>' + inhalt + '</section>';
+}
+
+/* Einheitliche Zeile für die Nachbardateien in „scripts", die beim Öffnen Vorrang vor der Liste haben. */
+function dateiAbgleichHtml(datei, idDownload, idLaden) {
+  return '<div class="adm-datei"><span class="klein-grau">Für alle auf dem Laufwerk: <code>' + datei + '</code> herunterladen und in den ' +
+    'Unterordner „scripts" legen – sie hat beim Öffnen Vorrang vor dieser Liste.</span>' +
+    '<span class="adm-datei-knoepfe"><button class="btn btn-klein" id="' + idDownload + '">' + datei + ' herunterladen</button>' +
+    '<button class="btn btn-klein" id="' + idLaden + '">Datei laden …</button></span></div>';
+}
 
 function oeffneStammdaten() {
   if (!modusHatAnsicht('stammdaten')) {
-    zeigeToast('Gremium, Personen und Bausteine werden im BR-Sitzungsmanager gepflegt und kommen über die Datei „Gremium" hierher.', 'fehler');
+    zeigeToast('Das Admin-Menü gibt es nur im BR-Sitzungsmanager; Gremium, Personen und Bausteine kommen über die Datei „Gremium" hierher.', 'fehler');
     return;
   }
-  if (!istAdmin()) { zeigeToast('Dieser Bereich ist nur im Debug-Mode verfügbar.', 'fehler'); return; }
+  if (!adminMenueVerfuegbar()) { zeigeToast('Das Admin-Menü ist nur im Debug-Mode verfügbar.', 'fehler'); return; }
   const dlg = document.getElementById('dlgStammdaten');
   const st = daten.stammdaten;
+  const knoepfe = html => '<div class="adm-knoepfe">' + html + '</div>';
   dlg.innerHTML =
-    '<div class="dlg-kopf"><h3>Debug-Panel · Gremium &amp; Mitglieder</h3><button class="btn btn-geist" id="sdZu">Schließen</button>' +
-      '<div class="dlg-nav">' +
-        '<button type="button" data-ziel="anfang">Gremium</button>' +
-        '<button type="button" data-ziel="sdSekPersonen">Personen &amp; Rollen</button>' +
-        '<button type="button" data-ziel="sdSekTops">Standard-TOPs</button>' +
-        '<button type="button" data-ziel="sdSekKategorien">Kategorien</button>' +
-        '<button type="button" data-ziel="sdSekVorlagen">Textbausteine</button>' +
-        '<button type="button" data-ziel="sdSekBeschlussVorlagen">Beschlusstexte</button>' +
-        '<button type="button" data-ziel="sdSekUrlaub">Urlaub</button>' +
-        '<button type="button" data-ziel="sdSekTags">Tags</button>' +
-        '<button type="button" data-ziel="sdSekZugang">Zugang</button>' +
+    '<div class="dlg-kopf"><h3>Admin-Menü</h3><button class="btn btn-geist" id="sdZu">Schließen</button>' +
+      '<div class="dlg-nav" role="tablist" aria-label="Bereiche des Admin-Menüs">' +
+        ADMIN_REITER.map(([id, label]) => '<button type="button" role="tab" data-reiter="' + id + '">' + esc(label) + '</button>').join('') +
       '</div></div>' +
     '<div class="dlg-koerper">' +
-    (APP_MODUS === 'protokoll'
-      ? '<div class="hinweis warnung" style="margin-top:0"><b>Diese Angaben werden im Sitzungsmanager gepflegt.</b> ' +
-        'Sie stammen aus der Nachbardatei <code>Gremium</code> und werden beim Öffnen automatisch übernommen – ' +
-        'Änderungen hier gehen beim nächsten Start verloren. Bitte im <b>BR-Sitzungsmanager</b> ändern, dort die ' +
-        'Datei <code>Gremium</code> neu erzeugen und in den Unterordner „scripts" legen.' +
-        (window.BR_GREMIUM && window.BR_GREMIUM.erstelltAm
-          ? ' Vorliegende Fassung vom ' + esc(fmtDatum(String(window.BR_GREMIUM.erstelltAm).slice(0, 10), true)) + '.'
-          : ' <b>Zurzeit liegt keine Datei <code>Gremium</code> vor.</b>') +
-        '</div>'
-      : '<div class="hinweis" style="margin-top:0">Diese Angaben gelten für beide Module. Nach Änderungen bitte unten ' +
-        '<b>„Gremium-Datei erzeugen"</b> und die Datei <code>Gremium</code> in den Unterordner „scripts" legen – das ' +
-        'Protokollmodul übernimmt sie dann beim Öffnen automatisch.</div>') +
-    '<div class="raster s3">' +
-      feldHtml('sdGremium', 'Bezeichnung des Gremiums', 'text', 'placeholder="Betriebsrat"') +
-      feldHtml('sdFirma', 'Firma / Betrieb', 'text') +
-      feldHtml('sdOrt', 'Ort (für Briefkopf & Datumszeile)', 'text') +
-    '</div><div class="raster s3" style="margin-top:14px">' +
-      feldHtml('sdGroesse', 'Gremiumgröße', 'number', 'min="1" max="99"', 'Basis der Beschlussfähigkeitsprüfung') +
-      feldHtml('sdNachrichtlich', 'Einladung nachrichtlich an', 'text', '', 'z. B. SBV und JAV; leer = keine Zeile') +
-      '<div class="feld"><label>Logo für den Briefkopf (PNG/JPG)</label><div style="display:flex;gap:8px;align-items:center">' +
-        '<button class="btn btn-klein" id="sdLogoWahl">Logo wählen …</button>' +
-        '<span id="sdLogoInfo" class="klein-grau"></span>' +
-        '<button class="btn btn-klein btn-geist btn-gefahr" id="sdLogoWeg" style="display:none">entfernen</button></div></div>' +
-    '</div>' +
-    '<hr class="trenner">' +
-    '<h3 class="dlg-sektion" id="sdSekPersonen">Personen &amp; Rollen</h3>' +
-    '<p class="klein-grau">Betriebsrat, Schwerbehindertenvertretung (SBV) und Jugend- und Auszubildendenvertretung (JAV) getrennt erfassen. Nur BR-Mitglieder zählen für Anwesenheit und Beschlussfähigkeit; die BR-Reihenfolge ist die Anwesenheitsliste. SBV und JAV lassen sich pro Sitzung als Gäste übernehmen. „Aktiv" abwählen statt löschen, wenn jemand ausscheidet.</p>' +
-    '<div id="sdPersonen" style="margin-top:6px"></div>' +
-    '<hr class="trenner">' +
-    '<h3 class="dlg-sektion" id="sdSekTops">Standard-Tagesordnungspunkte</h3>' +
-    '<p class="klein-grau">Werden beim Anlegen jeder neuen Sitzung automatisch eingefügt – mitsamt den hier hinterlegten <b>Unterpunkten</b> (erscheinen dann als 1.1, 1.2 …). Für alle Nutzer auf dem Netzlaufwerk: „standard-tops.js herunterladen" und in den Unterordner „scripts" legen – die App liest die Datei beim Öffnen automatisch (sie hat dann Vorrang vor dieser Liste).</p>' +
-    '<div id="sdStandardTops" style="margin-top:6px"></div>' +
-    '<div class="reihe" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">' +
-      '<button class="btn btn-klein btn-primaer" id="sdTopNeu">+ TOP</button>' +
-      '<button class="btn btn-klein" id="sdTopDownload">standard-tops.js herunterladen</button>' +
-      '<button class="btn btn-klein" id="sdTopLaden">Datei laden …</button>' +
-    '</div>' +
-    '<hr class="trenner">' +
-    '<h3 class="dlg-sektion" id="sdSekKategorien">Kategorien für Tagesordnungspunkte</h3>' +
-    '<p class="klein-grau">Die Art jedes Tagesordnungspunkts (z. B. Formalia, Beratung, Beschlussfassung). Für alle Nutzer auf dem Netzlaufwerk: „category.js herunterladen" und in den Unterordner „scripts" legen – die App liest die Datei beim Öffnen automatisch (sie hat dann Vorrang vor dieser Liste). Ein interner Schlüssel wird automatisch vergeben; bereits vergebene Kategorien bleiben bestehen.</p>' +
-    '<div id="sdKategorien" style="margin-top:6px"></div>' +
-    '<div class="reihe" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">' +
-      '<button class="btn btn-klein btn-primaer" id="sdKatNeu">+ Kategorie</button>' +
-      '<button class="btn btn-klein" id="sdKatDownload">category.js herunterladen</button>' +
-      '<button class="btn btn-klein" id="sdKatLaden">Datei laden …</button>' +
-    '</div>' +
-    '<hr class="trenner">' +
-    '<h3 class="dlg-sektion" id="sdSekVorlagen">Textbausteine für Protokolle</h3>' +
-    '<p class="klein-grau">Wiederkehrende Formulierungen, die bei der Protokollerstellung je Tagesordnungspunkt über „+ Textblock einfügen" auswählbar sind. Für alle Nutzer auf dem Netzlaufwerk: „protokoll_vorlagen.js herunterladen" und in den Unterordner „scripts" legen – die Datei wird beim Öffnen automatisch geladen (sie hat dann Vorrang vor dieser Liste).</p>' +
-    '<div id="sdVorlagen" style="margin-top:6px"></div>' +
-    '<div class="reihe" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">' +
-      '<button class="btn btn-klein btn-primaer" id="sdVorlageNeu">+ Baustein</button>' +
-      '<button class="btn btn-klein" id="sdVorlagenDownload">protokoll_vorlagen.js herunterladen</button>' +
-      '<button class="btn btn-klein" id="sdVorlagenLaden">Datei laden …</button>' +
-    '</div>' +
-    '<hr class="trenner">' +
-    '<h3 class="dlg-sektion" id="sdSekBeschlussVorlagen">Textbausteine für Beschlüsse</h3>' +
-    '<p class="klein-grau">Vorformulierte Beschlusstexte, die im Protokoll je Beschluss über „+ Textblock einfügen" in den <b>Wortlaut</b> übernommen werden – getrennt von den Protokoll-Bausteinen oben. Für alle Nutzer auf dem Netzlaufwerk: „beschluss_vorlagen.js herunterladen" und in den Unterordner „scripts" legen – die Datei wird beim Öffnen automatisch geladen (sie hat dann Vorrang vor dieser Liste). Platzhalter wie „…" bewusst stehen lassen; sie werden beim Protokollieren ausgefüllt.</p>' +
-    '<div id="sdBeschlussVorlagen" style="margin-top:6px"></div>' +
-    '<div class="reihe" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">' +
-      '<button class="btn btn-klein btn-primaer" id="sdBVorlageNeu">+ Baustein</button>' +
-      '<button class="btn btn-klein" id="sdBVorlagenDownload">beschluss_vorlagen.js herunterladen</button>' +
-      '<button class="btn btn-klein" id="sdBVorlagenLaden">Datei laden …</button>' +
-    '</div>' +
-    '<hr class="trenner">' +
-    '<h3 class="dlg-sektion" id="sdSekUrlaub">Urlaubskalender</h3>' +
-    '<p class="klein-grau">Abwesenheiten des Gremiums. Beim Sitzungsdatum warnt die App, wer abwesend ist; im Protokoll werden diese Mitglieder als „Entschuldigt" vorbelegt, solange noch kein Status erfasst ist. Der Abgleich läuft über den <b>Namen</b> aus „Personen &amp; Rollen" – Groß-/Kleinschreibung ist egal. Beide Tage sind einschließlich; ein eintägiger Urlaub hat gleiches Von und Bis. Wer den Kalender lieber zentral pflegt, legt <code>urlaub.js</code> in den Unterordner <code>scripts</code> – die Datei hat dann beim Öffnen Vorrang vor dieser Liste.</p>' +
-    '<div id="sdUrlaub" style="margin-top:6px"></div>' +
-    '<div class="reihe" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">' +
-      '<button class="btn btn-klein btn-primaer" id="sdUrlaubMeldungen">Meldungen einlesen …</button>' +
-      '<button class="btn btn-klein" id="sdUrlaubNeu">+ Abwesenheit</button>' +
-      '<button class="btn btn-klein" id="sdUrlaubDownload">urlaub.js herunterladen</button>' +
-      '<button class="btn btn-klein" id="sdUrlaubLaden">Datei laden …</button>' +
-      '<button class="btn btn-klein btn-geist" id="sdUrlaubAufraeumen" title="Alle Zeiträume entfernen, die vollständig in der Vergangenheit liegen">Vergangene aufräumen</button>' +
-    '</div>' +
-    '<hr class="trenner">' +
-    '<h3 class="dlg-sektion" id="sdSekTags">Beschluss-Schlagworte (Tags)</h3>' +
-    '<p class="klein-grau">Farbige Tags zum Kategorisieren von Beschlüssen – im Protokoll je Beschluss zuweisbar, in der Beschluss-Übersicht filter- und exportierbar.</p>' +
-    '<div id="sdTags" style="margin-top:6px"></div>' +
-    '<button class="btn btn-klein btn-primaer" id="sdTagNeu" style="margin-top:8px">+ Tag</button>' +
-    '<hr class="trenner">' +
-    '<h3 class="dlg-sektion" id="sdSekZugang">Zugang &amp; Passwörter</h3>' +
-    '<p class="klein-grau">Drei Rollen: Das <b>Viewer-Passwort</b> öffnet die Nur-Lese-Ansicht, das <b>Arbeits-Passwort</b> den Bearbeitungsmodus, das <b>Debug-Mode-Passwort</b> zusätzlich die Verwaltung. Die Passwörter (verschlüsselt) liegen in der Nachbardatei <code>br-zugang.js</code>; beim Öffnen wird immer eines abgefragt.</p>' +
-    '<p class="klein-grau">Nach einer Passwort-Änderung <b>die Zugangsdatei neu herunterladen</b> und in den Unterordner „scripts" auf dem Laufwerk legen – erst dann gilt das neue Passwort für alle Nutzer. Vorhandene Daten bleiben erhalten (gleicher Hauptschlüssel).</p>' +
-    '<div class="reihe" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">' +
-      '<button class="btn btn-klein" id="sdPwViewer">Viewer-Passwort ändern</button>' +
-      '<button class="btn btn-klein" id="sdPwArbeit">Arbeits-Passwort ändern</button>' +
-      '<button class="btn btn-klein" id="sdPwAdmin">Debug-Mode-Passwort ändern</button>' +
-      '<button class="btn btn-klein btn-primaer" id="sdZugangDownload">Zugangsdatei (br-zugang.js) herunterladen</button>' +
-    '</div>' +
-    '</div>' +
-    '<div class="dlg-fuss"><button class="btn btn-gefahr" id="sdReset">Alle Daten zurücksetzen …</button>' +
-    '<span style="flex:1"></span>' +
-    (APP_MODUS === 'sitzung'
-      ? '<button class="btn" id="sdGremiumDatei" title="Alle Angaben dieses Panels verschlüsselt in die Nachbardatei „Gremium" schreiben">Gremium-Datei erzeugen</button>'
-      : '') +
-    '<button class="btn btn-primaer" id="sdFertig">Fertig</button></div>';
 
-  dlg.querySelectorAll('.dlg-nav [data-ziel]').forEach(b => b.onclick = () => {
-    if (b.dataset.ziel === 'anfang') { dlg.scrollTo({ top: 0, behavior: 'smooth' }); return; }
-    const z = dlg.querySelector('#' + b.dataset.ziel);
-    if (z) z.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  });
+    adminReiterHtml('gremium',
+      '<h3 class="dlg-sektion">Gremium</h3>' +
+      '<p class="klein-grau">Gilt für beide Module. Nach Änderungen unten <b>„Gremium-Datei erzeugen"</b> und die Datei ' +
+        '<code>Gremium</code> in den Unterordner „scripts" legen – das Protokollmodul übernimmt sie beim Öffnen.</p>' +
+      '<div class="raster s3">' +
+        feldHtml('sdGremium', 'Bezeichnung des Gremiums', 'text', 'placeholder="Betriebsrat"') +
+        feldHtml('sdFirma', 'Firma / Betrieb', 'text') +
+        feldHtml('sdOrt', 'Ort (für Briefkopf & Datumszeile)', 'text') +
+      '</div><div class="raster s3" style="margin-top:14px">' +
+        feldHtml('sdVerteiler', 'E-Mail-Verteiler des Gremiums', 'email', 'placeholder="optional, z. B. betriebsrat@firma.de"',
+          'nur ordentliche Mitglieder; ersetzt in der Einladungs-Mail deren Einzeladressen. Ersatzmitglieder werden immer einzeln eingeladen.') +
+      '</div><div class="raster s3" style="margin-top:14px">' +
+        feldHtml('sdGroesse', 'Gremiumgröße', 'number', 'min="1" max="99"', 'Basis der Beschlussfähigkeitsprüfung') +
+        feldHtml('sdNachrichtlich', 'Einladung nachrichtlich an', 'text', '', 'z. B. SBV und JAV; leer = keine Zeile') +
+        '<div class="feld"><label>Logo für den Briefkopf (PNG/JPG)</label><div style="display:flex;gap:8px;align-items:center">' +
+          '<button class="btn btn-klein" id="sdLogoWahl">Logo wählen …</button>' +
+          '<span id="sdLogoInfo" class="klein-grau"></span>' +
+          '<button class="btn btn-klein btn-geist btn-gefahr" id="sdLogoWeg" style="display:none">entfernen</button></div></div>' +
+      '</div>') +
+
+    adminReiterHtml('personen',
+      '<h3 class="dlg-sektion">Personen &amp; Rollen</h3>' +
+      '<p class="klein-grau">Nur BR-Mitglieder zählen für Anwesenheit und Beschlussfähigkeit; ihre Reihenfolge ist die der ' +
+        'Anwesenheitsliste. SBV und JAV lassen sich je Sitzung als Gäste übernehmen. Wer ausscheidet: „aktiv" abwählen statt löschen.</p>' +
+      '<div id="sdPersonen"></div>') +
+
+    adminReiterHtml('tagesordnung',
+      '<h3 class="dlg-sektion">Standard-Tagesordnungspunkte</h3>' +
+      '<p class="klein-grau">Werden in jede neue Sitzung eingefügt, samt Unterpunkten (1.1, 1.2 …).</p>' +
+      '<div id="sdStandardTops"></div>' +
+      knoepfe('<button class="btn btn-klein btn-primaer" id="sdTopNeu">+ TOP</button>') +
+      dateiAbgleichHtml('standard-tops.js', 'sdTopDownload', 'sdTopLaden') +
+      '<h3 class="dlg-sektion adm-zweite">Kategorien</h3>' +
+      '<p class="klein-grau">Die Art eines Tagesordnungspunkts (z. B. Formalia, Beratung, Beschlussfassung) – optional je TOP und Unterpunkt. ' +
+        'Der interne Schlüssel wird automatisch vergeben; vergebene Kategorien bleiben bestehen.</p>' +
+      '<div id="sdKategorien"></div>' +
+      knoepfe('<button class="btn btn-klein btn-primaer" id="sdKatNeu">+ Kategorie</button>') +
+      dateiAbgleichHtml('category.js', 'sdKatDownload', 'sdKatLaden')) +
+
+    adminReiterHtml('textbausteine',
+      '<h3 class="dlg-sektion">Für Protokolle</h3>' +
+      '<p class="klein-grau">Im Protokoll je Tagesordnungspunkt über „+ Textblock einfügen" auswählbar.</p>' +
+      '<div id="sdVorlagen"></div>' +
+      knoepfe('<button class="btn btn-klein btn-primaer" id="sdVorlageNeu">+ Baustein</button>') +
+      dateiAbgleichHtml('protokoll_vorlagen.js', 'sdVorlagenDownload', 'sdVorlagenLaden') +
+      '<h3 class="dlg-sektion adm-zweite">Für Beschlüsse</h3>' +
+      '<p class="klein-grau">Im Protokoll je Beschluss über „+ Textblock einfügen" in den <b>Wortlaut</b> übernommen. ' +
+        'Platzhalter wie „…" stehen lassen – sie werden beim Protokollieren ausgefüllt.</p>' +
+      '<div id="sdBeschlussVorlagen"></div>' +
+      knoepfe('<button class="btn btn-klein btn-primaer" id="sdBVorlageNeu">+ Baustein</button>') +
+      dateiAbgleichHtml('beschluss_vorlagen.js', 'sdBVorlagenDownload', 'sdBVorlagenLaden')) +
+
+    adminReiterHtml('tags',
+      '<h3 class="dlg-sektion">Beschluss-Schlagworte (Tags)</h3>' +
+      '<p class="klein-grau">Farbige Tags zum Einordnen von Beschlüssen – im Protokoll je Beschluss zuweisbar, in der ' +
+        'Beschluss-Übersicht filter- und exportierbar.</p>' +
+      '<div id="sdTags"></div>' +
+      knoepfe('<button class="btn btn-klein btn-primaer" id="sdTagNeu">+ Tag</button>')) +
+
+    adminReiterHtml('urlaub',
+      '<h3 class="dlg-sektion">Urlaubskalender</h3>' +
+      '<p class="klein-grau">Zum Sitzungsdatum warnt die App, wer abwesend ist, und belegt diese Mitglieder im Protokoll als ' +
+        '„Entschuldigt" vor. Abgleich über den <b>Namen</b> aus „Personen" (Groß-/Kleinschreibung egal); Von und Bis zählen mit.</p>' +
+      '<div id="sdUrlaub"></div>' +
+      knoepfe(
+        '<button class="btn btn-klein btn-primaer" id="sdUrlaubNeu">+ Abwesenheit</button>' +
+        '<button class="btn btn-klein" id="sdUrlaubMeldungen">Meldungen einlesen …</button>' +
+        '<button class="btn btn-klein btn-geist" id="sdUrlaubAufraeumen" title="Alle Zeiträume entfernen, die vollständig in der Vergangenheit liegen">Vergangene aufräumen</button>') +
+      dateiAbgleichHtml('urlaub.js', 'sdUrlaubDownload', 'sdUrlaubLaden')) +
+
+    adminReiterHtml('zugang',
+      '<h3 class="dlg-sektion">Zugang &amp; Passwörter</h3>' +
+      '<p class="klein-grau"><b>Viewer</b> öffnet die Nur-Lese-Ansicht, <b>Arbeit</b> den Bearbeitungsmodus, <b>Debug-Mode</b> ' +
+        'zusätzlich dieses Admin-Menü. Nach einer Änderung die Zugangsdatei neu herunterladen und in den Unterordner „scripts" ' +
+        'legen – erst dann gilt das neue Passwort für alle. Die Daten bleiben erhalten (gleicher Hauptschlüssel).</p>' +
+      knoepfe(
+        '<button class="btn btn-klein" id="sdPwViewer">Viewer-Passwort ändern</button>' +
+        '<button class="btn btn-klein" id="sdPwArbeit">Arbeits-Passwort ändern</button>' +
+        '<button class="btn btn-klein" id="sdPwAdmin">Debug-Mode-Passwort ändern</button>') +
+      knoepfe('<button class="btn btn-klein btn-primaer" id="sdZugangDownload">Zugangsdatei (br-zugang.js) herunterladen</button>') +
+      '<h3 class="dlg-sektion adm-zweite">Gefahrenbereich</h3>' +
+      '<p class="klein-grau">Entfernt sämtliche Sitzungen, Personen und Anlagen aus dem Speicher dieses Browsers. ' +
+        'Nicht als Datei gesicherte Daten gehen verloren.</p>' +
+      knoepfe('<button class="btn btn-klein btn-gefahr" id="sdReset">Alle Daten zurücksetzen …</button>')) +
+
+    '</div>' +
+    '<div class="dlg-fuss">' +
+      '<button class="btn" id="sdGremiumDatei" title="Alle Angaben dieses Menüs verschlüsselt in die Nachbardatei „Gremium" schreiben">Gremium-Datei erzeugen</button>' +
+      '<button class="btn btn-primaer" id="sdFertig">Fertig</button></div>';
+
+  const zeigeReiter = id => {
+    if (!ADMIN_REITER.some(([r]) => r === id)) id = ADMIN_REITER[0][0];
+    ui.adminReiter = id;   /* beim nächsten Öffnen wieder hier */
+    dlg.querySelectorAll('.adm-reiter').forEach(s => { s.hidden = s.dataset.reiter !== id; });
+    dlg.querySelectorAll('.dlg-nav [data-reiter]').forEach(b => b.setAttribute('aria-selected', String(b.dataset.reiter === id)));
+    dlg.scrollTop = 0;
+  };
+  dlg.querySelectorAll('.dlg-nav [data-reiter]').forEach(b => b.onclick = () => zeigeReiter(b.dataset.reiter));
+  zeigeReiter(ui.adminReiter);
 
   bindeText(dlg.querySelector('#sdGremium'), () => st.gremium, v => { st.gremium = v; });
   bindeText(dlg.querySelector('#sdFirma'), () => st.firma, v => { st.firma = v; });
   bindeText(dlg.querySelector('#sdOrt'), () => st.ort, v => { st.ort = v; });
   bindeText(dlg.querySelector('#sdGroesse'), () => st.gremiumGroesse, v => { st.gremiumGroesse = parseInt(v, 10) || ''; });
   bindeText(dlg.querySelector('#sdNachrichtlich'), () => st.nachrichtlich, v => { st.nachrichtlich = v; });
+  bindeText(dlg.querySelector('#sdVerteiler'), () => st.verteiler, v => { st.verteiler = v.trim(); });
 
   const logoInfo = dlg.querySelector('#sdLogoInfo'), logoWeg = dlg.querySelector('#sdLogoWeg');
   const logoAnzeigen = () => {
@@ -877,7 +890,7 @@ function oeffneStammdaten() {
     if (!rein.length) { zeigeToast('Keine Kategorien zum Herunterladen.', 'fehler'); return; }
     const inhalt = '/* TOP-Kategorien für den BR-Sitzungsmanager.\n' +
       '   Diese Datei in den Unterordner "scripts" legen; sie wird beim Öffnen automatisch geladen.\n' +
-      '   Bequem bearbeiten im Debug-Panel („Kategorien" → „category.js herunterladen"). */\n' +
+      '   Bequem bearbeiten im Admin-Menü („Tagesordnung" → „category.js herunterladen"). */\n' +
       'window.BR_KATEGORIEN = ' + JSON.stringify(rein, null, 2) + ';\n';
     dateiHerunterladen(new Blob([inhalt], { type: 'text/javascript;charset=utf-8' }), 'category.js');
     zeigeToast('category.js erstellt. Bitte in den Unterordner „scripts" legen.', 'erfolg');

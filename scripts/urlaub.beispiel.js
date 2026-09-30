@@ -8,9 +8,9 @@
    - Reiter „Sitzung": Warnung, wer am Sitzungsdatum abwesend ist.
    - Reiter „Protokoll": diese Mitglieder werden als „Entschuldigt" vorbelegt, solange kein
      Teilnahmestatus erfasst ist (bereits erfasste Angaben bleiben unberührt).
-   - Debug-Panel → „Urlaub": Gesamtübersicht, warnt bei Namen ohne Zuordnung zu den Stammdaten.
+   - Admin-Menü → „Urlaub": Gesamtübersicht, warnt bei Namen ohne Zuordnung zu den Stammdaten.
 
-   Felder: name (exakt wie in „Gremium & Mitglieder", Groß-/Kleinschreibung egal),
+   Felder: name (exakt wie im Admin-Menü unter „Personen", Groß-/Kleinschreibung egal),
    von/bis (ISO JJJJ-MM-TT, bis weglassen = eintägig), grund (Freitext, Standard „Urlaub").
 
    Beispieleinträge unten durch die echten Zeiträume ersetzen.

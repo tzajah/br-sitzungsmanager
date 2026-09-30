@@ -1,4 +1,4 @@
-/* Hat Vorrang vor der in der App gespeicherten Liste (Bearbeiten: hier oder via Debug-Panel-Download).
+/* Hat Vorrang vor der in der App gespeicherten Liste (Bearbeiten: hier oder via Download im Admin-Menü).
    Abgrenzung: protokoll_vorlagen.js = Verlauf-Formulierungen, diese Datei = Beschlusstexte.
    „…" in den Texten sind bewusste Platzhalter, keine Tippfehler. */
 window.BR_BESCHLUSS_VORLAGEN = [
