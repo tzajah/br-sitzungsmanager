@@ -1,5 +1,6 @@
 /* Hat Vorrang vor der in der App gespeicherten Liste. kategorie: formalia | information | beratung | beschluss | sonstiges.
-   Optional „unterpunkte": [{"titel":"…"}] (Kurzform: ["Erster","Zweiter"]) – erzeugt Unterpunkte 1.1, 1.2 … */
+   Optional „unterpunkte": [{"titel":"…", "kategorie":"…"}] (Kurzform: ["Erster","Zweiter"]) – erzeugt Unterpunkte 1.1, 1.2 …
+   Die Kategorie ist überall optional; ohne Angabe bleibt der Punkt ohne Kategorie. */
 window.BR_STANDARD_TOPS = [
   { "titel": "Begrüßung und Eröffnung der Sitzung", "kategorie": "formalia" },
   { "titel": "Feststellung der ordnungsgemäßen Ladung und der Beschlussfähigkeit", "kategorie": "formalia" },

@@ -18,6 +18,11 @@ function exportPruefungen(s) {
     if (!(b.antrag || '').trim()) p.push('TOP ' + nr + ': Beschluss Nr. ' + beschlussNrText(b) + ' hat noch keinen Wortlaut.');
     const abg = (parseInt(b.ja, 10) || 0) + (parseInt(b.nein, 10) || 0) + (parseInt(b.enthaltung, 10) || 0);
     if (abg === 0) p.push('TOP ' + nr + ': Für Beschluss Nr. ' + beschlussNrText(b) + ' sind keine Stimmen erfasst.');
+    const basis = abstimmungsBasis(daten, s, b, punkt);
+    if (q.beschlussfaehig && !basis.beschlussfaehig) {
+      p.push('TOP ' + nr + ': Bei Beschluss Nr. ' + beschlussNrText(b) + ' sind nur ' + basis.teilnehmend +
+        ' Mitglieder an der Abstimmung beteiligt – für diese Abstimmung nicht beschlussfähig (erforderlich: ' + basis.erforderlich + ').');
+    }
   });
   s.tops.forEach((t, i) => {
     pruefePunkt(t, String(i + 1));
@@ -141,6 +146,7 @@ function einladungVolltext(daten, s) {
     if (top.beschreibung) z.push('   ' + top.beschreibung);
     (top.unterpunkte || []).forEach((u, j) => {
       z.push('   ' + (i + 1) + '.' + (j + 1) + '  ' + (u.titel || '(ohne Titel)'));
+      if (kategorieText(u)) z.push('      ' + kategorieText(u));
       if (u.beschreibung) z.push('      ' + u.beschreibung);
       const uNrn = (u.anlagen || []).map(a => anlNrVon(a)).filter(n => n > 0);
       if (uNrn.length) z.push('      ' + (uNrn.length > 1 ? 'Anlagen ' : 'Anlage ') + uNrn.join(', '));
@@ -420,6 +426,7 @@ function praesentationHtml(daten, s) {
     const unter = (t.unterpunkte || []).length
       ? '<ul class="unter-liste">' + t.unterpunkte.map((u, j) =>
           '<li><span class="u-nr">' + (i + 1) + '.' + (j + 1) + '</span><span>' + esc(u.titel || '(ohne Titel)') +
+          (kategorieText(u) ? '<div class="u-text">' + esc(kategorieText(u)) + '</div>' : '') +
           (u.beschreibung ? '<div class="u-text">' + esc(u.beschreibung).replace(/\n/g, '<br>') + '</div>' : '') +
           '</span></li>').join('') + '</ul>'
       : '';
@@ -730,7 +737,7 @@ function oeffneStammdaten() {
       '<div class="std-top" data-i="' + i + '" style="margin-bottom:10px">' +
       '<div class="mitglied-zeile">' +
         '<input data-f="titel" class="eingabe" placeholder="Titel des Tagesordnungspunkts">' +
-        '<select data-f="kategorie" class="eingabe">' + Object.keys(KATEGORIEN).map(k => '<option value="' + k + '">' + KATEGORIEN[k] + '</option>').join('') + '</select>' +
+        '<select data-f="kategorie" class="eingabe" aria-label="Kategorie">' + kategorieOptionenHtml() + '</select>' +
         '<div class="mz-werkzeuge">' +
           '<button class="btn btn-symbol btn-geist" data-tu="hoch" title="Nach oben"><svg class="ic"><use href="#ic-hoch"/></svg></button>' +
           '<button class="btn btn-symbol btn-geist" data-tu="runter" title="Nach unten"><svg class="ic"><use href="#ic-runter"/></svg></button>' +
@@ -742,6 +749,7 @@ function oeffneStammdaten() {
           '<div class="mitglied-zeile" data-u="' + j + '" style="margin-top:4px">' +
           '<span class="klein-grau" style="min-width:34px">' + (i + 1) + '.' + (j + 1) + '</span>' +
           '<input data-f="utitel" class="eingabe" placeholder="Titel des Unterpunkts">' +
+          '<select data-f="ukategorie" class="eingabe" aria-label="Kategorie des Unterpunkts">' + kategorieOptionenHtml() + '</select>' +
           '<div class="mz-werkzeuge">' +
             '<button class="btn btn-symbol btn-geist" data-utu="hoch" title="Nach oben"><svg class="ic"><use href="#ic-hoch"/></svg></button>' +
             '<button class="btn btn-symbol btn-geist" data-utu="runter" title="Nach unten"><svg class="ic"><use href="#ic-runter"/></svg></button>' +
@@ -755,7 +763,7 @@ function oeffneStammdaten() {
       const t = daten.standardTops[i];
       const kopf = block.querySelector('.mitglied-zeile');
       bindeText(kopf.querySelector('[data-f="titel"]'), () => t.titel, v => { t.titel = v; });
-      const kat = kopf.querySelector('[data-f="kategorie"]'); kat.value = KATEGORIEN[t.kategorie] ? t.kategorie : ersteKategorie();
+      const kat = kopf.querySelector('[data-f="kategorie"]'); kat.value = kategorieOderLeer(t.kategorie);
       kat.onchange = () => { t.kategorie = kat.value; speichern(); };
       kopf.querySelectorAll('[data-tu]').forEach(btn => btn.onclick = () => {
         const tu = btn.dataset.tu, arr = daten.standardTops;
@@ -769,6 +777,8 @@ function oeffneStammdaten() {
         const j = parseInt(zeile.dataset.u, 10);
         const u = t.unterpunkte[j];
         bindeText(zeile.querySelector('[data-f="utitel"]'), () => u.titel, v => { u.titel = v; });
+        const ukat = zeile.querySelector('[data-f="ukategorie"]'); ukat.value = kategorieOderLeer(u.kategorie);
+        ukat.onchange = () => { u.kategorie = ukat.value; speichern(); };
         zeile.querySelectorAll('[data-utu]').forEach(btn => btn.onclick = () => {
           const tu = btn.dataset.utu, arr = t.unterpunkte;
           if (tu === 'weg') { arr.splice(j, 1); speichern(); renderStandardTops(); }
@@ -777,7 +787,7 @@ function oeffneStammdaten() {
         });
       });
       block.querySelector('[data-tu="uneu"]').onclick = () => {
-        t.unterpunkte.push({ id: uid(), titel: '' });
+        t.unterpunkte.push({ id: uid(), titel: '', kategorie: kategorieOderLeer(t.kategorie) });   /* startet mit der Kategorie des TOP */
         speichern(); renderStandardTops();
         const f = stc.querySelector('.std-top[data-i="' + i + '"] [data-u]:last-of-type [data-f="utitel"]');
         if (f) f.focus();
@@ -786,15 +796,18 @@ function oeffneStammdaten() {
   };
   renderStandardTops();
   dlg.querySelector('#sdTopNeu').onclick = () => {
-    daten.standardTops.push({ id: uid(), titel: '', kategorie: ersteKategorie(), unterpunkte: [] });
+    daten.standardTops.push({ id: uid(), titel: '', kategorie: '', unterpunkte: [] });
     speichern(); renderStandardTops();
     const f = stc.querySelector('.std-top:last-of-type [data-f="titel"]'); if (f) f.focus();
   };
   dlg.querySelector('#sdTopDownload').onclick = () => {
     const rein = (daten.standardTops || []).filter(t => (t.titel || '').trim())
       .map(t => {
-        const e = { titel: t.titel.trim(), kategorie: KATEGORIEN[t.kategorie] ? t.kategorie : ersteKategorie() };
-        const unter = (t.unterpunkte || []).filter(u => (u.titel || '').trim()).map(u => ({ titel: u.titel.trim() }));
+        const e = { titel: t.titel.trim(), kategorie: kategorieOderLeer(t.kategorie) };
+        const unter = (t.unterpunkte || []).filter(u => (u.titel || '').trim()).map(u => {
+          const k = kategorieOderLeer(u.kategorie);
+          return k ? { titel: u.titel.trim(), kategorie: k } : { titel: u.titel.trim() };
+        });
         if (unter.length) e.unterpunkte = unter;
         return e;
       });
@@ -1137,7 +1150,7 @@ function oeffneStammdaten() {
         const arr = JSON.parse(txt.slice(a, b + 1));
         const norm = (arr || []).filter(t => t && t.titel).map(t => ({
           id: uid(), titel: String(t.titel).trim(),
-          kategorie: KATEGORIEN[t.kategorie] ? t.kategorie : ersteKategorie(),
+          kategorie: kategorieOderLeer(t.kategorie),
           unterpunkte: standardUnterpunkteNorm(t.unterpunkte)
         }));
         if (!norm.length) throw new Error('leer');

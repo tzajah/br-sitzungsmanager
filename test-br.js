@@ -174,4 +174,56 @@ assert.strictEqual(eingespielt2.teilnahme.m1.status, 'anwesend', 'erfasste Anwes
 assert.strictEqual(eingespielt2.gaeste[0].name, 'Vor Ort erfasst', 'erfasste Gäste schlagen die Planung');
 console.log('OK  Geplante Anwesenheit und Gästeliste reisen mit, überschreiben aber nichts Erfasstes');
 
+/* Kategorien sind optional – neue Punkte starten ohne, gelöschte Kategorien fallen auf „ohne" zurück */
+assert.strictEqual(k.neuerTop().kategorie, '', 'neuer TOP startet ohne Kategorie');
+assert.strictEqual(k.neuerUnterpunkt().kategorie, '', 'Unterpunkte haben ein eigenes, leeres Kategoriefeld');
+assert.strictEqual(k.kategorieOderLeer('beschluss'), 'beschluss');
+assert.strictEqual(k.kategorieOderLeer('gibt-es-nicht'), '', 'unbekannte Kategorie gilt als „ohne"');
+assert.strictEqual(k.kategorieText({ kategorie: '' }), '', 'ohne Kategorie kein Text');
+assert.ok(k.kategorieOptionenHtml().startsWith('<option value="">'), 'die Auswahl beginnt mit „– ohne –"');
+console.log('OK  Kategorien optional, auch für Unterpunkte');
+
+/* Nicht an der Abstimmung Beteiligte verkleinern die Stimmbasis des einzelnen Beschlusses */
+const gremium = { stammdaten: { gremiumGroesse: '5' },
+  personen: ['a', 'b', 'c', 'd', 'e'].map(id => ({ id, name: id.toUpperCase(), gruppe: 'br', funktion: 'Mitglied', aktiv: true })) };
+const abst = { teilnahme: { a: { status: 'anwesend' }, b: { status: 'anwesend' }, c: { status: 'video' }, d: { status: 'anwesend' } } };
+const bs = { ja: '2', nein: '1', enthaltung: '0', ergebnis: 'auto', nichtBeteiligt: {} };
+let basis = k.abstimmungsBasis(gremium, abst, bs);
+assert.strictEqual(basis.teilnehmend, 4);
+assert.ok(!k.beschlussAuswertung(bs, basis.teilnehmend).angenommen, '2 Ja von 4 Teilnehmenden ist keine Mehrheit');
+bs.nichtBeteiligt = { d: 'nicht_stimmberechtigt', e: 'abwesend' };   /* e nimmt an der Sitzung gar nicht teil */
+basis = k.abstimmungsBasis(gremium, abst, bs);
+assert.strictEqual(basis.teilnehmend, 3, 'nur Teilnehmende können von der Abstimmung ausgenommen sein');
+assert.ok(k.beschlussAuswertung(bs, basis.teilnehmend).angenommen, '2 Ja von 3 Beteiligten ist die Mehrheit');
+assert.ok(basis.beschlussfaehig, '3 von 5 genügen');
+assert.strictEqual(k.nichtBeteiligtText(basis), 'D (nicht stimmberechtigt)');
+bs.nichtBeteiligt.c = 'abwesend';
+basis = k.abstimmungsBasis(gremium, abst, bs);
+assert.ok(!basis.beschlussfaehig, '2 von 5 sind für diese Abstimmung zu wenig');
+assert.strictEqual(k.nichtBeteiligtText(basis), 'C (abwesend), D (nicht stimmberechtigt)');
+assert.deepStrictEqual(roh(k.neuerBeschluss({ sitzungen: [] }, 2026).nichtBeteiligt), {}, 'neue Beschlüsse: alle stimmen ab');
+console.log('OK  Stimmbasis je Beschluss ohne nicht beteiligte Mitglieder');
+
+/* Teil-Anwesenheit: wer nur bei einzelnen TOPs da ist, zählt nur für deren Beschlüsse */
+const up2 = { id: 'u2', titel: 'Teil', beschluesse: [] };
+const teilSitzung = {
+  tops: [{ id: 't1', unterpunkte: [] }, { id: 't2', unterpunkte: [up2] }],
+  teilnahme: { a: { status: 'anwesend' }, b: { status: 'anwesend' }, d: { status: 'video' },
+               c: { status: 'anwesend', tops: ['t2'] } }
+};
+const ohneAusnahme = { nichtBeteiligt: {} };
+assert.strictEqual(k.abstimmungsBasis(gremium, teilSitzung, ohneAusnahme, teilSitzung.tops[0]).teilnehmend, 3,
+  'bei TOP 1 zählt das nur für TOP 2 anwesende Mitglied nicht');
+assert.strictEqual(k.abstimmungsBasis(gremium, teilSitzung, ohneAusnahme, up2).teilnehmend, 4, 'Unterpunkte zählen zu ihrem TOP');
+assert.ok(k.abstimmungsBasis(gremium, teilSitzung, ohneAusnahme, teilSitzung.tops[0]).reduziert);
+assert.strictEqual(k.abstimmungsBasis(gremium, teilSitzung, ohneAusnahme).teilnehmend, 4, 'ohne Punkt gilt die ganze Sitzung');
+assert.strictEqual(k.teilweiseText(teilSitzung, teilSitzung.teilnahme.c), 'nur TOP 2');
+assert.strictEqual(k.teilweiseText(teilSitzung, { status: 'anwesend', tops: [] }), 'bei keinem TOP');
+assert.strictEqual(k.teilweiseText(teilSitzung, teilSitzung.teilnahme.a), '', 'ganze Sitzung: kein Vermerk');
+console.log('OK  Teil-Anwesenheit zählt nur für die Beschlüsse der gewählten TOPs');
+
+assert.deepStrictEqual(roh(k.standardUnterpunkteNorm([{ titel: 'A', kategorie: 'beratung' }, 'B']).map(u => [u.titel, u.kategorie])),
+  [['A', 'beratung'], ['B', '']], 'Standard-Unterpunkte behalten ihre Kategorie');
+console.log('OK  Unterpunkte der Standard-TOPs tragen eine Kategorie');
+
 console.log('\nAlle Prüfungen bestanden.');

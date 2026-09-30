@@ -8,6 +8,37 @@ veröffentlichten Releases).
 ## [Unreleased]
 
 ### Hinzugefügt
+- **Unterpunkte haben eine eigene Kategorie** – in der Sitzung wie bei den Standard-TOPs.
+  Im Reiter „Tagesordnung“ steht unter dem Titel jedes Unterpunkts die Auswahl „Art des
+  Unterpunkts“, im Standard-TOP-Editor eine Auswahl neben dem Titel. Ein neu angelegter
+  Unterpunkt übernimmt zunächst die Kategorie seines TOP. In `standard-tops.js` trägt ein
+  Unterpunkt sie optional als `"kategorie"`; sie bleibt beim Einfügen in eine Sitzung, beim
+  Herunterladen und bei der Übernahme aus der Datei erhalten. Einladung (PDF und E-Mail),
+  Präsentation, Protokollansicht, Niederschrift und Gast-Auszug zeigen sie unter der
+  Überschrift des Unterpunkts an – nur wenn eine gesetzt ist.
+- **Mitglieder können von einer einzelnen Abstimmung ausgenommen werden.** Unter jedem
+  Beschluss lässt sich aufklappen, welche anwesenden Mitglieder *nicht stimmberechtigt*
+  (etwa weil selbst betroffen) oder bei dieser Abstimmung *abwesend* waren. Die Mehrheit
+  wird dann aus den Beteiligten berechnet, nicht mehr aus allen Anwesenden – das gilt in
+  der Protokollansicht, in der Niederschrift und in der Beschluss-Übersicht. Die
+  Niederschrift nennt die nicht Beteiligten namentlich mit Grund. Nimmt weniger als die
+  Hälfte des Gremiums an der Abstimmung teil, warnen Protokollansicht, Niederschrift und
+  die Prüfung vor dem Export: Für diese Abstimmung ist der Betriebsrat nicht
+  beschlussfähig (§ 33 Abs. 2 BetrVG). Die Angabe reist mit dem Beschluss in der
+  Ergebnis-Übergabe zum Sitzungsmanager.
+- **Anwesenheit nur bei einzelnen TOPs.** Bei „Anwesend“ oder „Video“ lässt sich in der
+  Anwesenheitstabelle „nur bei einzelnen TOPs anwesend“ ankreuzen und die TOPs wählen –
+  etwa für ein Ersatzmitglied, das für ein befangenes Mitglied nur zu einem TOP nachrückt,
+  oder für ein Mitglied, das später kommt. Es zählt dann nur bei den Beschlüssen dieser
+  TOPs (Unterpunkte gehören zu ihrem TOP) und steht nur dort zur Auswahl „nicht an der
+  Abstimmung beteiligt“. Sinkt dadurch die Stimmbasis unter die Hälfte des Gremiums, warnt
+  die App für diese Abstimmung. Niederschrift und Anwesenheitsliste vermerken es beim Namen
+  („nur TOP 3“). Die Tabelle ist dieselbe in „Einladung“ und Protokoll, die Angabe lässt
+  sich also schon vorab planen und reist mit der Teilnahme zwischen den Modulen.
+- **Der tatsächliche Sitzungsbeginn wird im Protokoll erfasst** – neben dem Sitzungsende;
+  beide Felder haben einen Knopf „Jetzt“, der die aktuelle Uhrzeit einträgt. Die Niederschrift nennt ihn in „Beginn / Ende“ statt der
+  geplanten Uhrzeit und leitet die Sitzung mit „Die Sitzungsleitung eröffnet die Sitzung
+  um …“ ein. Er reist wie das Ende mit der Ergebnis-Übergabe zum Sitzungsmanager.
 - **Test auf Formatgleichheit zwischen App und Werkzeugseiten** (`pruefeFormatgleichheit`
   in `test-browser.js`). „Sicherung teilen“, „Anlagen entfernen“ und der
   Verschlüsselungsgenerator führen bewusst eigene Kopien des Krypto-Kerns. Die bisherigen
@@ -20,6 +51,11 @@ veröffentlichten Releases).
   läuft deshalb auch in einem frischen Klon.
 
 ### Geändert
+- **Die Kategorie ist optional.** Jede Auswahl beginnt mit „– ohne –“; neue TOPs und
+  Unterpunkte starten ohne Kategorie. Bisher setzte die App stillschweigend die erste
+  Kategorie – beim Anlegen, beim Laden älterer Standard-TOPs und bei der Übernahme aus
+  `standard-tops.js`. Bestehende Zuordnungen bleiben unverändert; eine gelöschte
+  Kategorie erscheint in der Auswahl als „– ohne –“.
 - **Verpacken und Entpacken einer Sicherung stehen in eigenen Funktionen**
   (`sicherungVerpacken`, `sicherungEntpacken` in `br-app.js`), damit der Test genau den
   Code prüft, den Speichern, Öffnen und „Datei laden“ verwenden. Das Dateiformat bleibt
