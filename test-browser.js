@@ -2033,7 +2033,7 @@ async function pruefeAdminMenue() {
   assert.strictEqual(erg.adminKnopf, '', 'im Debug-Mode ist der Knopf sichtbar');
   assert.strictEqual(erg.titel, 'Admin-Menü');
   assert.strictEqual(erg.kopf, 'Admin-Menü');
-  assert.deepStrictEqual(erg.reiter, ['Gremium', 'Personen', 'Tagesordnung', 'Textbausteine', 'Beschluss-Tags', 'Urlaub', 'Zugang & System']);
+  assert.deepStrictEqual(erg.reiter, ['Gremium', 'Erscheinungsbild', 'Personen', 'Tagesordnung', 'Textbausteine', 'Beschluss-Tags', 'Urlaub', 'Zugang & System']);
   assert.deepStrictEqual(erg.start, ['gremium'], 'es ist immer genau ein Bereich sichtbar');
   assert.deepStrictEqual(erg.nachKlick, ['urlaub']);
   assert.strictEqual(erg.gewaehlt, 'urlaub', 'der Reiter ist als gewählt markiert');
@@ -2069,6 +2069,57 @@ async function pruefeAdminMenue() {
   assert.deepStrictEqual(mail.mit, ['br-verteiler@firma.de', 'ersatz@firma.de'],
     'mit Verteiler: der Verteiler statt der ordentlichen Mitglieder, Ersatzmitglieder weiter einzeln');
   assert.strictEqual(mail.to, 'To: br-verteiler@firma.de, ersatz@firma.de');
+
+  const look = await seite.evaluate(`
+    (() => {
+      const dlg = document.getElementById('dlgStammdaten');
+      const root = document.documentElement.style;
+      const h1 = document.querySelector('.seitenleiste .marke h1');
+      daten.stammdaten.logo = { name: 'logo.png', mime: 'image/png', size: 70,
+        dataUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=' };
+      renderAlles();
+      const vorher = { akzent: root.getPropertyValue('--akzent'), h1: h1.textContent, titel: document.title };
+      oeffneStammdaten();
+      dlg.querySelector('.dlg-nav [data-reiter="erscheinung"]').click();
+      dlg.querySelector('.farbfeld[data-farbe="#1F5FAD"]').click();
+      const name = dlg.querySelector('#sdAppName');
+      name.value = 'BR Werk Nord'; name.dispatchEvent(new Event('input', { bubbles: true }));
+      const ut = dlg.querySelector('#sdUntertitel');
+      ut.value = 'Sitzungen des Betriebsrats'; ut.dispatchEvent(new Event('input', { bubbles: true }));
+      const cb = dlg.querySelector('#sdLogoLeiste');
+      cb.checked = true; cb.dispatchEvent(new Event('change'));
+      const nachher = {
+        akzent: root.getPropertyValue('--akzent'), dunkel: root.getPropertyValue('--akzent-dunkel'),
+        gewaehlt: dlg.querySelector('.farbfeld[aria-pressed="true"]').dataset.farbe,
+        h1: h1.textContent, untertitel: document.querySelector('.seitenleiste .marke .untertitel').textContent,
+        titel: document.title, logo: !!document.querySelector('.seitenleiste .marke-logo'),
+        praes: praesentationHtml(daten, daten.sitzungen[0]).includes('--akz:#1F5FAD'),
+        gespeichert: JSON.stringify(daten.stammdaten.erscheinung)
+      };
+      const gelb = dlg.querySelector('#sdAkzent');
+      gelb.value = '#ffd400'; gelb.dispatchEvent(new Event('input'));
+      const gelbInfo = dlg.querySelector('#sdAkzentInfo').textContent;
+      dlg.querySelector('#sdErscheinungStandard').click();
+      const zurueck = { akzent: root.getPropertyValue('--akzent'), h1: h1.textContent, titel: document.title,
+                        logo: !!document.querySelector('.seitenleiste .marke-logo') };
+      dlg.close();
+      return { vorher, nachher, gelbInfo, zurueck };
+    })()
+  `);
+  assert.strictEqual(look.vorher.akzent, '', 'Standard: keine Überschreibung der CSS-Variablen');
+  assert.strictEqual(look.nachher.akzent, '#1F5FAD', 'die gewählte Farbe wird sofort angewendet');
+  assert.ok(look.nachher.dunkel && look.nachher.dunkel !== '#00673E', 'die dunkle Variante wird abgeleitet');
+  assert.strictEqual(look.nachher.gewaehlt, '#1F5FAD', 'das Farbfeld ist als gewählt markiert');
+  assert.strictEqual(look.nachher.h1, 'BR Werk Nord');
+  assert.strictEqual(look.nachher.untertitel, 'Sitzungen des Betriebsrats');
+  assert.strictEqual(look.nachher.titel, 'BR Werk Nord – Sitzungsmanager');
+  assert.ok(look.nachher.logo, 'das Logo steht in der Seitenleiste');
+  assert.ok(look.nachher.praes, 'die Präsentation übernimmt die Farbe');
+  assert.deepStrictEqual(JSON.parse(look.nachher.gespeichert),
+    { akzent: '#1F5FAD', name: 'BR Werk Nord', untertitel: 'Sitzungen des Betriebsrats', logoSeitenleiste: true });
+  assert.ok(look.gelbInfo.includes('abgedunkelt'), 'zu helle Farben werden sichtbar angepasst');
+  assert.deepStrictEqual(look.zurueck, { akzent: '', h1: look.vorher.h1, titel: look.vorher.titel, logo: false },
+    'Standard wiederherstellen setzt alles zurück');
   assert.deepStrictEqual(fehler, [], 'keine Laufzeitfehler');
   await browser.close();
   console.log('OK  Admin-Menü: nur im Debug-Mode, Reiter je Bereich; Einladung über den Verteiler');

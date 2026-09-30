@@ -25,6 +25,19 @@ veröffentlichten Releases).
   erzeugen“ und „Fertig“.
 
 ### Hinzugefügt
+- **Eigenes Erscheinungsbild je Gremium** (Admin-Menü → neuer Reiter „Erscheinungsbild“):
+  - **Akzentfarbe** aus sieben Vorschlägen oder frei wählbar. Dunkle, helle und Rand-Variante
+    sowie der Akzent auf der dunklen Seitenleiste werden daraus abgeleitet und so weit
+    nachgeführt, dass die Kontrastregel aus DESIGN.md hält (Fläche ≥ 3:1, weiße Schrift auf der
+    dunklen Variante ≥ 4,5:1). Zu helle Farben werden sichtbar abgedunkelt. Die Farbe gilt in der
+    App, in allen PDFs und in der Präsentation. Die Status-Signale bleiben grün.
+  - **Name und Untertitel** der Anwendung für Seitenleiste und Browser-Tab (z. B. „BR Werk Nord“).
+  - **Logo in der Seitenleiste**: das Briefkopf-Logo wahlweise auch oben in der Seitenleiste,
+    auf weißer Fläche.
+  Änderungen sind sofort sichtbar; „Standard-Erscheinungsbild wiederherstellen“ setzt alles
+  zurück. Das Erscheinungsbild gehört zu den Stammdaten und reist mit der Datei „Gremium“ ins
+  Protokollmodul. Vor dem Öffnen einer Datei (Sperrschirm) gilt das Standard-Erscheinungsbild,
+  weil die Stammdaten erst danach entschlüsselt vorliegen.
 - **E-Mail-Verteiler des Gremiums** (Admin-Menü → „Gremium“, optional). Ist er hinterlegt,
   lädt die Einladungs-Mail die ordentlichen Mitglieder über den Verteiler statt über ihre
   Einzeladressen ein. Ersatzmitglieder stehen nicht im Verteiler und werden immer über ihre

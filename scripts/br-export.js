@@ -66,7 +66,7 @@ function renderTabExport(c, s) {
     '<div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">' +
       (APP_MODUS === 'sitzung'
         ? '<button class="btn btn-primaer" id="exPraesentation" title="Tagesordnung als Vollbild-Präsentation für den Beamer (öffnet in neuem Tab)">Tagesordnung als Präsentation</button>' +
-          '<button class="btn" id="exEinladungEml" title="Einladung als versandfertige E-Mail-Datei – vollständiger Inhalt im Mailtext, ohne PDF-Anhang (öffnet in Outlook)">Einladung als E-Mail (.eml)</button>'
+          '<button class="btn" id="exEinladungEml" title="Einladung als versandfertige E-Mail-Datei vollständiger Inhalt im Mailtext, ohne PDF-Anhang (öffnet in Outlook)">Einladung als E-Mail (.eml)</button>'
         : '<button class="btn" id="exProtokollFertig" title="Info-E-Mail an die Teilnehmenden: Protokoll liegt auf dem Laufwerk (ohne Anhang)">Protokoll fertig (E-Mail)</button>') +
       (modusHatAnsicht('dokumente') ? '<button class="btn" id="exDokordner">Dokumente dieser Sitzung öffnen</button>' : '') +
       '</div>';
@@ -282,8 +282,8 @@ html,body{height:100%}
 body{font-family:"Bahnschrift","DIN 1451 Std","Archivo Narrow","Roboto Condensed",system-ui,'Segoe UI',Arial,sans-serif;
   background:var(--bg);color:var(--fg);overflow:hidden;-webkit-font-smoothing:antialiased;
   font-variant-numeric:tabular-nums}
-body[data-theme="hell"]{--bg:#F4F5F3;--fg:#0D1113;--dim:#5F6B72;--akz:#009057;--akz-fg:#fff;--linie2:#AEB5B1;--btn:#fff}
-body[data-theme="dunkel"]{--bg:#0E1211;--fg:#F1F4F2;--dim:#9AA79F;--akz:#35C68C;--akz-fg:#06231A;--linie2:#33403A;--btn:rgba(255,255,255,.07)}
+body[data-theme="hell"]{--bg:#F4F5F3;--fg:#0D1113;--dim:#5F6B72;--akz:@AKZ@;--akz-fg:#fff;--linie2:#AEB5B1;--btn:#fff}
+body[data-theme="dunkel"]{--bg:#0E1211;--fg:#F1F4F2;--dim:#9AA79F;--akz:@AKZ_DUNKEL@;--akz-fg:@AKZ_DUNKEL_FG@;--linie2:#33403A;--btn:rgba(255,255,255,.07)}
 .folie{position:fixed;inset:0;display:none;align-items:center;justify-content:center}
 .folie.aktiv{display:flex}
 .fit{transform-origin:center center;max-width:1240px;text-align:left}
@@ -333,6 +333,11 @@ body[data-theme="dunkel"]{--bg:#0E1211;--fg:#F1F4F2;--dim:#9AA79F;--akz:#35C68C;
   color:var(--bg);background:var(--fg);padding:3px 10px;z-index:10}
 @media(prefers-reduced-motion:reduce){.leiste{transition:none}}
 `;
+/* Die Präsentation ist eine eigenständige Datei – die Akzentfarbe des Gremiums wird beim Erzeugen eingesetzt. */
+function praesCss(daten) {
+  const p = akzentPalette(erscheinung(daten.stammdaten).akzent);
+  return PRAES_CSS.replace('@AKZ@', p.akzent).replace('@AKZ_DUNKEL@', p.praesDunkel).replace('@AKZ_DUNKEL_FG@', p.praesDunkelFg);
+}
 const PRAES_JS = `
 (function(){
   var folien = Array.prototype.slice.call(document.querySelectorAll('.folie'));
@@ -452,7 +457,7 @@ function praesentationHtml(daten, s) {
 
   return '<!DOCTYPE html>\n<html lang="de"><head><meta charset="utf-8">' +
     '<meta name="viewport" content="width=device-width, initial-scale=1">' +
-    '<title>' + titel + '</title><style>' + PRAES_CSS + '</style></head>' +
+    '<title>' + titel + '</title><style>' + praesCss(daten) + '</style></head>' +
     '<body data-theme="hell">' + folien.join('') +
     '<div class="leiste" id="fortschritt"></div>' +
     '<div class="zaehler" id="zaehler"></div>' + vermerk +
@@ -529,7 +534,7 @@ async function starteExport(btn, art, s) {
 
 /* Admin-Menü (nur Debug-Mode, nur Sitzungsmanager): je Bereich ein Reiter statt einer langen Seite. */
 const ADMIN_REITER = [
-  ['gremium', 'Gremium'], ['personen', 'Personen'], ['tagesordnung', 'Tagesordnung'],
+  ['gremium', 'Gremium'], ['erscheinung', 'Erscheinungsbild'], ['personen', 'Personen'], ['tagesordnung', 'Tagesordnung'],
   ['textbausteine', 'Textbausteine'], ['tags', 'Beschluss-Tags'], ['urlaub', 'Urlaub'], ['zugang', 'Zugang & System']
 ];
 
@@ -554,6 +559,9 @@ function oeffneStammdaten() {
   const dlg = document.getElementById('dlgStammdaten');
   const st = daten.stammdaten;
   const knoepfe = html => '<div class="adm-knoepfe">' + html + '</div>';
+  const markeH1 = document.querySelector('.seitenleiste .marke h1'), markeUt = document.querySelector('.seitenleiste .marke .untertitel');
+  const standardName = (markeH1 && (markeH1.dataset.standard || markeH1.textContent)) || '';
+  const standardUntertitel = (markeUt && (markeUt.dataset.standard || markeUt.textContent)) || '';
   dlg.innerHTML =
     '<div class="dlg-kopf"><h3>Admin-Menü</h3><button class="btn btn-geist" id="sdZu">Schließen</button>' +
       '<div class="dlg-nav" role="tablist" aria-label="Bereiche des Admin-Menüs">' +
@@ -580,6 +588,25 @@ function oeffneStammdaten() {
           '<span id="sdLogoInfo" class="klein-grau"></span>' +
           '<button class="btn btn-klein btn-geist btn-gefahr" id="sdLogoWeg" style="display:none">entfernen</button></div></div>' +
       '</div>') +
+
+    adminReiterHtml('erscheinung',
+      '<h3 class="dlg-sektion">Erscheinungsbild</h3>' +
+      '<p class="klein-grau">Gibt dem Tool den Look des Gremiums – in beiden Modulen (reist mit der Datei <code>Gremium</code>), ' +
+        'in den PDFs und in der Präsentation. Änderungen sind sofort sichtbar.</p>' +
+      '<div class="raster s3">' +
+        feldHtml('sdAppName', 'Name der Anwendung', 'text', 'placeholder="' + esc(standardName) + '"', 'Seitenleiste und Browser-Tab; leer = Standard') +
+        feldHtml('sdUntertitel', 'Untertitel', 'text', 'placeholder="' + esc(standardUntertitel) + '"', 'leer = Standard') +
+      '</div>' +
+      '<div class="feld" style="margin-top:14px"><label for="sdAkzent">Akzentfarbe</label><div class="farbwahl">' +
+        AKZENT_VORSCHLAEGE.map(([hex, n]) => '<button type="button" class="farbfeld" data-farbe="' + hex + '" title="' + n +
+          '" aria-label="' + n + '" style="background:' + hex + '"></button>').join('') +
+        '<input type="color" id="sdAkzent" title="Eigene Farbe wählen">' +
+        '<span class="klein-grau" id="sdAkzentInfo"></span></div>' +
+        '<span class="feldhinweis">Buttons, Markierungen, Kennfeld, PDFs und Präsentation. Zu helle Farben werden für die Lesbarkeit ' +
+          'automatisch abgedunkelt. Der Beschluss-Status „angenommen" bleibt grün.</span></div>' +
+      '<div style="margin-top:14px"><label class="pruefreihe"><input type="checkbox" id="sdLogoLeiste"> ' +
+        'Logo auch oben in der Seitenleiste zeigen</label><p class="klein-grau" id="sdLogoLeisteInfo" style="margin:4px 0 0"></p></div>' +
+      knoepfe('<button class="btn btn-klein btn-geist" id="sdErscheinungStandard">Standard-Erscheinungsbild wiederherstellen</button>')) +
 
     adminReiterHtml('personen',
       '<h3 class="dlg-sektion">Personen &amp; Rollen</h3>' +
@@ -669,9 +696,12 @@ function oeffneStammdaten() {
   bindeText(dlg.querySelector('#sdVerteiler'), () => st.verteiler, v => { st.verteiler = v.trim(); });
 
   const logoInfo = dlg.querySelector('#sdLogoInfo'), logoWeg = dlg.querySelector('#sdLogoWeg');
+  const logoLeisteInfo = dlg.querySelector('#sdLogoLeisteInfo');
   const logoAnzeigen = () => {
     logoInfo.textContent = st.logo ? st.logo.name + ' (' + fmtBytes(st.logo.size) + ')' : 'kein Logo';
     logoWeg.style.display = st.logo ? '' : 'none';
+    logoLeisteInfo.textContent = st.logo ? 'Verwendet das Briefkopf-Logo aus dem Reiter „Gremium".' : 'Noch kein Logo – im Reiter „Gremium" wählen.';
+    erscheinungAnwenden();
   };
   logoAnzeigen();
   dlg.querySelector('#sdLogoWahl').onclick = () => document.getElementById('dateiLogo').click();
@@ -685,6 +715,30 @@ function oeffneStammdaten() {
     e.target.value = '';
   };
   logoWeg.onclick = () => { st.logo = null; speichern(); logoAnzeigen(); };
+
+  /* Erscheinungsbild */
+  st.erscheinung = st.erscheinung || {};
+  const er = st.erscheinung;
+  const appName = dlg.querySelector('#sdAppName'), untertitel = dlg.querySelector('#sdUntertitel');
+  const logoLeiste = dlg.querySelector('#sdLogoLeiste'), farbe = dlg.querySelector('#sdAkzent');
+  bindeText(appName, () => er.name, v => { er.name = v; }, erscheinungAnwenden);
+  bindeText(untertitel, () => er.untertitel, v => { er.untertitel = v; }, erscheinungAnwenden);
+  bindePruef(logoLeiste, () => er.logoSeitenleiste, v => { er.logoSeitenleiste = v; }, erscheinungAnwenden);
+  const zeigeFarbe = () => {
+    const wahl = erscheinung(st).akzent, p = akzentPalette(wahl);
+    farbe.value = wahl.toLowerCase();
+    dlg.querySelectorAll('.farbfeld').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.farbe === wahl)));
+    dlg.querySelector('#sdAkzentInfo').textContent = p.angepasst ? wahl + ' – für die Lesbarkeit abgedunkelt auf ' + p.akzent : wahl;
+  };
+  const farbeSetzen = hex => { er.akzent = hexNorm(hex) || STANDARD_AKZENT; speichern(); erscheinungAnwenden(); zeigeFarbe(); };
+  dlg.querySelectorAll('.farbfeld').forEach(b => b.onclick = () => farbeSetzen(b.dataset.farbe));
+  farbe.oninput = () => farbeSetzen(farbe.value);
+  zeigeFarbe();
+  dlg.querySelector('#sdErscheinungStandard').onclick = () => {
+    for (const k of Object.keys(er)) delete er[k];
+    appName.value = ''; untertitel.value = ''; logoLeiste.checked = false;
+    speichern(); erscheinungAnwenden(); zeigeFarbe();
+  };
 
   const pc = dlg.querySelector('#sdPersonen');
   const renderGruppe = g => {

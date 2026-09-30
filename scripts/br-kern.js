@@ -980,20 +980,80 @@ function pdfText(s) {
 }
 
 /* Zustände bekommen zusätzlich eine Form (Rechteck=Freigabe, Dreieck=Warnung) für Graustufendruck und Farbfehlsichtigkeit. */
-function pdfFarben(rgb) {
+/* Erscheinungsbild: Das Gremium wählt eine Akzentfarbe; die Varianten werden daraus abgeleitet, und die
+   Kontrastregel aus DESIGN.md bleibt gewahrt (Flächen ≥ 3:1 auf Weiß, weiße Schrift auf der dunklen Variante ≥ 4,5:1). */
+const STANDARD_AKZENT = '#009057';
+const AKZENT_VORSCHLAEGE = [
+  ['#009057', 'Freigabegrün'], ['#1F5FAD', 'Blau'], ['#00707A', 'Petrol'], ['#8E1B3A', 'Bordeaux'],
+  ['#5B3E96', 'Violett'], ['#B34700', 'Orange'], ['#3A4650', 'Anthrazit']
+];
+
+function hexNorm(hex) {
+  const m = /^#?([0-9a-f]{6})$/i.exec(String(hex || '').trim());
+  return m ? '#' + m[1].toUpperCase() : null;
+}
+function hexZuRgb(hex) { const n = parseInt(hexNorm(hex).slice(1), 16); return [n >> 16, (n >> 8) & 255, n & 255]; }
+function rgbZuHex(rgb) { return '#' + rgb.map(v => Math.round(Math.min(255, Math.max(0, v))).toString(16).padStart(2, '0')).join('').toUpperCase(); }
+/* t = Anteil von b (0 … 1) */
+function farbMischung(a, b, t) { const x = hexZuRgb(a), y = hexZuRgb(b); return rgbZuHex(x.map((v, i) => v + (y[i] - v) * t)); }
+function farbKontrast(a, b) {
+  const lum = hex => {
+    const [r, g, bl] = hexZuRgb(hex).map(v => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); });
+    return 0.2126 * r + 0.7152 * g + 0.0722 * bl;
+  };
+  const la = lum(a), lb = lum(b);
+  return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
+}
+/* Schiebt die Farbe so wenig wie nötig Richtung „zu", bis sie gegen „gegen" den Kontrast erreicht. */
+function farbeBisKontrast(hex, zu, gegen, ziel) {
+  for (let t = 0; t <= 1.0001; t += 0.01) {
+    const f = farbMischung(hex, zu, t);
+    if (farbKontrast(f, gegen) >= ziel) return f;
+  }
+  return zu;
+}
+
+function akzentPalette(wunsch) {
+  const hex = hexNorm(wunsch) || STANDARD_AKZENT;
+  if (hex === STANDARD_AKZENT) {
+    return { wunsch: hex, akzent: '#009057', dunkel: '#00673E', hell: '#E2F1EA', rand: '#9CCDB7',
+             praesDunkel: '#35C68C', praesDunkelFg: '#06231A', angepasst: false };
+  }
+  const akzent = farbeBisKontrast(hex, '#000000', '#FFFFFF', 3);
+  const dunkel = farbeBisKontrast(farbMischung(akzent, '#000000', 0.285), '#000000', '#FFFFFF', 4.5);
+  return {
+    wunsch: hex, akzent, dunkel,
+    hell: farbMischung(akzent, '#FFFFFF', 0.88), rand: farbMischung(akzent, '#FFFFFF', 0.6),
+    praesDunkel: farbeBisKontrast(akzent, '#FFFFFF', '#0E1211', 6), praesDunkelFg: '#0E1211',
+    angepasst: akzent !== hex
+  };
+}
+
+/* Einstellungen mit Vorgaben; fehlt der Block (ältere Stände), gilt das Standard-Erscheinungsbild. */
+function erscheinung(st) {
+  const e = (st && st.erscheinung) || {};
+  return {
+    akzent: hexNorm(e.akzent) || STANDARD_AKZENT,
+    name: String(e.name || '').trim(),
+    untertitel: String(e.untertitel || '').trim(),
+    logoSeitenleiste: !!e.logoSeitenleiste
+  };
+}
+
+function pdfFarben(rgb, palette) {
   return {
     ink:     rgb(0.051, 0.067, 0.075),
     grau:    rgb(0.373, 0.420, 0.447),
     hell:    rgb(0.545, 0.584, 0.608),
     linie:   rgb(0.682, 0.710, 0.694),
     linieHell: rgb(0.835, 0.851, 0.839),
-    akzent:  rgb(0.000, 0.565, 0.341),
-    akzentTief: rgb(0.000, 0.404, 0.243),
+    akzent:  rgb(...hexZuRgb(palette.akzent).map(v => v / 255)),
+    akzentTief: rgb(...hexZuRgb(palette.dunkel).map(v => v / 255)),
     fuellung: rgb(0.957, 0.961, 0.953),
     kopfFuellung: rgb(0.051, 0.067, 0.075),
     warn:    rgb(0.894, 0.706, 0.161),
     warnTief: rgb(0.541, 0.357, 0.071),
-    gruen:   rgb(0.000, 0.404, 0.243),
+    gruen:   rgb(0.000, 0.404, 0.243),   /* Status „angenommen" – bleibt grün, unabhängig von der Akzentfarbe */
     rot:     rgb(0.639, 0.125, 0.090),
     weiss:   rgb(1, 1, 1)
   };
@@ -1418,7 +1478,7 @@ class PdfBuilder {
 }
 /* Kernmodul 3: Dokumentgeneratoren */
 
-async function pdfGrundlagen() {
+async function pdfGrundlagen(daten) {
   const { PDFDocument, StandardFonts, rgb } = PDFLib;
   const doc = await PDFDocument.create();
   const fonts = {
@@ -1427,7 +1487,7 @@ async function pdfGrundlagen() {
     kursiv: await doc.embedFont(StandardFonts.HelveticaOblique),
     fettKursiv: await doc.embedFont(StandardFonts.HelveticaBoldOblique)
   };
-  return { doc, fonts, farben: pdfFarben(rgb) };
+  return { doc, fonts, farben: pdfFarben(rgb, akzentPalette(erscheinung(daten && daten.stammdaten).akzent)) };
 }
 
 async function ladeLogo(doc, stamm) {
@@ -1492,7 +1552,7 @@ function anlagenVerzeichnis(b, eintraege, vorspann) {
 async function erzeugeEinladungPdf(daten, s, opt) {
   opt = opt || {};
   const st = daten.stammdaten;
-  const { doc, fonts, farben } = await pdfGrundlagen();
+  const { doc, fonts, farben } = await pdfGrundlagen(daten);
   const logo = await ladeLogo(doc, st);
   const b = new PdfBuilder(doc, fonts, farben,
     { links: [st.gremium || 'Betriebsrat', st.firma].filter(Boolean).join(' · '), rechts: 'Einladung · Sitzung Nr. ' + s.nr },
@@ -1623,7 +1683,7 @@ function zeichneAnwesenheitsliste(b, daten, s, opts) {
 async function erzeugeAnwesenheitslistePdf(daten, s, opt) {
   opt = opt || {};
   const st = daten.stammdaten;
-  const { doc, fonts, farben } = await pdfGrundlagen();
+  const { doc, fonts, farben } = await pdfGrundlagen(daten);
   const logo = await ladeLogo(doc, st);
   const b = new PdfBuilder(doc, fonts, farben,
     { links: [st.gremium || 'Betriebsrat', st.firma].filter(Boolean).join(' · '), rechts: 'Anwesenheitsliste · Sitzung Nr. ' + s.nr },
@@ -1674,7 +1734,7 @@ function pdfPunktInhalt(b, daten, s, punkt) {
 async function erzeugeProtokollPdf(daten, s, opt) {
   opt = opt || {};
   const st = daten.stammdaten;
-  const { doc, fonts, farben } = await pdfGrundlagen();
+  const { doc, fonts, farben } = await pdfGrundlagen(daten);
   const logo = await ladeLogo(doc, st);
   const b = new PdfBuilder(doc, fonts, farben,
     { links: [st.gremium || 'Betriebsrat', st.firma].filter(Boolean).join(' · '), rechts: 'Niederschrift · Sitzung Nr. ' + s.nr },
@@ -1785,7 +1845,7 @@ async function erzeugeProtokollPdf(daten, s, opt) {
 async function erzeugeGekuerztesProtokollPdf(daten, s, gast, opt) {
   opt = opt || {};
   const st = daten.stammdaten;
-  const { doc, fonts, farben } = await pdfGrundlagen();
+  const { doc, fonts, farben } = await pdfGrundlagen(daten);
   const logo = await ladeLogo(doc, st);
   const b = new PdfBuilder(doc, fonts, farben,
     { links: [st.gremium || 'Betriebsrat', st.firma].filter(Boolean).join(' · '), rechts: 'Protokollauszug · Sitzung Nr. ' + s.nr },
