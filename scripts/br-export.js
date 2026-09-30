@@ -622,7 +622,6 @@ function oeffneStammdaten() {
     '<h3 class="dlg-sektion" id="sdSekZugang">Zugang &amp; Passwörter</h3>' +
     '<p class="klein-grau">Drei Rollen: Das <b>Viewer-Passwort</b> öffnet die Nur-Lese-Ansicht, das <b>Arbeits-Passwort</b> den Bearbeitungsmodus, das <b>Debug-Mode-Passwort</b> zusätzlich die Verwaltung. Die Passwörter (verschlüsselt) liegen in der Nachbardatei <code>br-zugang.js</code>; beim Öffnen wird immer eines abgefragt.</p>' +
     '<p class="klein-grau">Nach einer Passwort-Änderung <b>die Zugangsdatei neu herunterladen</b> und in den Unterordner „scripts" auf dem Laufwerk legen – erst dann gilt das neue Passwort für alle Nutzer. Vorhandene Daten bleiben erhalten (gleicher Hauptschlüssel).</p>' +
-    '<p class="klein-grau">Die Anwendung benötigt zusätzlich die verschlüsselte Cryptodatei <code>key</code>. Sie ist an diese <code>br-zugang.js</code> gebunden; eine passende Datei lässt sich hier neu ausstellen. Eine Passwort-Änderung berührt die Cryptodatei nicht (gleicher Hauptschlüssel).</p>' +
     '<div class="reihe" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">' +
       '<button class="btn btn-klein" id="sdPwViewer">Viewer-Passwort ändern</button>' +
       '<button class="btn btn-klein" id="sdPwArbeit">Arbeits-Passwort ändern</button>' +

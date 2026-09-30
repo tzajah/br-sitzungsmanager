@@ -7,6 +7,31 @@ veröffentlichten Releases).
 
 ## [Unreleased]
 
+### Hinzugefügt
+- **Test auf Formatgleichheit zwischen App und Werkzeugseiten** (`pruefeFormatgleichheit`
+  in `test-browser.js`). „Sicherung teilen“, „Anlagen entfernen“ und der
+  Verschlüsselungsgenerator führen bewusst eigene Kopien des Krypto-Kerns. Die bisherigen
+  Tests bauten ihre Sicherungen mit genau diesen Kopien – eine Abweichung von der App wäre
+  nicht aufgefallen. Jetzt schreibt und liest die echte App: Ihre Sicherung läuft durch
+  beide Werkzeuge und wird danach wieder von der App geöffnet; die Startdatei des Generators
+  öffnet die App, und jede der drei Rollen entsperrt dessen Zugang. Außerdem muss
+  `PBKDF2_ITER` überall gleich sein – der Wert reist im Zugang mit, eine abweichende
+  Konstante fiele beim Laden sonst nicht auf. Der Test braucht keine `br-zugang.js` und
+  läuft deshalb auch in einem frischen Klon.
+
+### Geändert
+- **Verpacken und Entpacken einer Sicherung stehen in eigenen Funktionen**
+  (`sicherungVerpacken`, `sicherungEntpacken` in `br-app.js`), damit der Test genau den
+  Code prüft, den Speichern, Öffnen und „Datei laden“ verwenden. Das Dateiformat bleibt
+  unverändert.
+
+### Behoben
+- **Veraltete Hinweise zum Ablageort von `br-zugang.js`.** Sperrschirm und die vom
+  Generator erzeugte Datei nannten noch den Ordner neben `BR-Sitzungsmanager.html`; seit
+  v0.33.0 gehört sie in den Unterordner `scripts`.
+- **Reste der entfallenen Datei `key`.** Der Dialog „Zugang & Passwörter“ beschrieb sie
+  noch als erforderlich, der Generator sprach von der „Prüfung der Cryptodatei“.
+
 ## [0.38.0] – 2026-09-12 – Öffentliche Fassung
 
 ### Geändert
