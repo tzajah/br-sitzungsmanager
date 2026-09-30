@@ -7,6 +7,10 @@ veröffentlichten Releases).
 
 ## [Unreleased]
 
+### Behoben
+- **„14:00 Uhr Uhr“ in der Einladungs-Mail.** Beginn und voraussichtliches Ende trugen das
+  „Uhr“ doppelt, weil die Zeitformatierung es bereits anhängt.
+
 ### Geändert (Admin-Menü)
 - **„Gremium & Mitglieder“ heißt jetzt „Admin-Menü“** – mit Zahnrad-Symbol in der
   Seitenleiste. Es bleibt dem Debug-Mode vorbehalten und dem Sitzungsmanager; im
@@ -25,6 +29,15 @@ veröffentlichten Releases).
   erzeugen“ und „Fertig“.
 
 ### Hinzugefügt
+- **Die Einladungs-Mail (`.eml`) sieht aus wie die PDF-Einladung.** Bisher war sie reiner
+  Text; jetzt ist sie eine HTML-Mail im selben Aufbau: Briefkopf mit Gremium, Firma, Ort und
+  Logo, die Doppellinie in der Akzentfarbe, Datumszeile, Titel, Rahmendaten, Tagesordnung mit
+  Kategorien, Referent, Dauer, Unterpunkten und Anlagennummern, Hinweise, Gruß,
+  Anlagenverzeichnis und die Fußzeile samt Vertraulich-Vermerk. Gebaut nur aus Tabellen und
+  Inline-Styles, damit Outlook und andere Mailprogramme sie so darstellen; das Logo hängt als
+  eingebettetes Bild an (Content-ID), weil Outlook eingebettete `data:`-Bilder nicht zeigt.
+  Die bisherige Textfassung reist als Alternative mit (`multipart/alternative`). Die Datei
+  öffnet in Outlook weiterhin als Entwurf.
 - **Eigenes Erscheinungsbild je Gremium** (Admin-Menü → neuer Reiter „Erscheinungsbild“):
   - **Akzentfarbe** aus sieben Vorschlägen oder frei wählbar. Dunkle, helle und Rand-Variante
     sowie der Akzent auf der dunklen Seitenleiste werden daraus abgeleitet und so weit
