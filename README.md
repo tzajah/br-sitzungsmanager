@@ -54,8 +54,9 @@ Anwesenheitsliste, Niederschrift) nach den einschlägigen Vorschriften des BetrV
 - **Sitzungen** anlegen, speichern, duplizieren; Status (Entwurf → Eingeladen →
   Protokoll → Abgeschlossen).
 - **Tagesordnung** mit Punkten, Kategorien, Referent, Dauer und Anlagen sowie
-  **Unterpunkten** (2.1, 2.2 …) – jeder Unterpunkt kann eigene Beschlüsse,
-  Aufgaben **und Anlagen** tragen.
+  **Unterpunkten** (2.1, 2.2 …) – jeder Unterpunkt kann eine eigene Kategorie,
+  eigene Beschlüsse, Aufgaben **und Anlagen** tragen. Die Kategorie ist optional
+  („– ohne –"); ein neuer Unterpunkt übernimmt zunächst die Kategorie seines TOP.
 - **Einladung** (nur Sitzungsmanager): die **geplante Anwesenheit** vor der Sitzung –
   Status je Mitglied, „Vertreten durch" für das geladene Ersatzmitglied und eine
   Vorschau der Beschlussfähigkeit. Sie füllt dasselbe Feld wie das Protokollmodul,
@@ -64,9 +65,14 @@ Anwesenheitsliste, Niederschrift) nach den einschlägigen Vorschriften des BetrV
   Sachverständige) – dieselbe Liste, die das Protokollmodul führt, inklusive Übernahme
   aktiver SBV-/JAV-Personen aus den Stammdaten. Sobald die Schriftführung eigene Angaben
   erfasst hat, gilt deren Stand – die Planung überschreibt nie Protokolliertes.
-- **Protokoll** mit Anwesenheit, Beschlussfähigkeit (§ 33 Abs. 2 BetrVG),
-  Beschlüssen im Wortlaut (inkl. Unterpunkte), automatischer Abstimmungsauswertung
-  (§ 33 Abs. 1) und Aufgaben je TOP/Unterpunkt.
+- **Protokoll** mit Anwesenheit, tatsächlichem Beginn und Ende der Sitzung,
+  Beschlussfähigkeit (§ 33 Abs. 2 BetrVG), Beschlüssen im Wortlaut (inkl.
+  Unterpunkte), automatischer Abstimmungsauswertung (§ 33 Abs. 1) und Aufgaben je
+  TOP/Unterpunkt. Mitglieder – etwa ein nachgerücktes Ersatzmitglied – lassen sich als
+  **nur bei einzelnen TOPs anwesend** erfassen; sie zählen dann nur bei den Beschlüssen
+  dieser TOPs mit. Je Beschluss lassen sich anwesende Mitglieder als **nicht an der
+  Abstimmung beteiligt** markieren (nicht stimmberechtigt oder abwesend); die
+  Mehrheit wird dann aus den Beteiligten berechnet, und die Niederschrift nennt sie.
 - **Textformatierung im Verlauf** („Verlauf / Ergebnis der Beratung", je TOP und
   Unterpunkt): kleine WYSIWYG-Leiste für **Fett**, *Kursiv*, Unterstrichen sowie
   Aufzählungs- und Nummerierungslisten. Die Auszeichnung erscheint in der App und
@@ -89,7 +95,8 @@ Anwesenheitsliste, Niederschrift) nach den einschlägigen Vorschriften des BetrV
   (im Ordner `scripts`), im Debug-Panel editierbar; werden beim Anlegen jeder Sitzung
   automatisch eingefügt. Je Punkt lassen sich **Unterpunkte** hinterlegen, die dann
   als 1.1, 1.2 … mit entstehen – in der Datei über ein optionales Feld
-  `"unterpunkte": [{ "titel": "…" }]` (Kurzform `["Erster", "Zweiter"]` genügt auch).
+  `"unterpunkte": [{ "titel": "…", "kategorie": "…" }]` (Kurzform `["Erster", "Zweiter"]`
+  genügt auch; die Kategorie ist optional).
 - **TOP-Kategorien** (z. B. Formalia, Beratung, Beschlussfassung) aus einer externen
   Datei `category.js` (im Ordner `scripts`), im Debug-Panel editierbar (Bezeichnung
   anlegen/umbenennen/sortieren); ein interner Schlüssel bleibt stabil.
@@ -373,8 +380,9 @@ Einzeldatei nicht auf, im Browser wäre es ein Ladefehler.
 echten DOM: fehlerfreies Laden aller Module, Reiter und Exporte je Betriebsart, die
 Urlaubs-Vorbelegung im Protokoll, das Einfügen eines Beschluss-Textbausteins, die
 Migration alter Sicherungsstände (Klartext-Altformat und `enc-v2` ohne Kategorien),
-die getrennten Speicherstände samt Sitzungs-Übergabe sowie den Umwandler
-`br-sicherung-teilen.html` inklusive Passwort- und Fehlerfällen.
+die getrennten Speicherstände samt Sitzungs-Übergabe, den Umwandler
+`br-sicherung-teilen.html` inklusive Passwort- und Fehlerfällen sowie die
+Formatgleichheit zwischen App und Werkzeugseiten.
 
 Beide Skripte brauchen keine `br-zugang.js`: Der Sperrschirm bleibt zu,
 die Renderfunktionen werden direkt mit einem Testprojekt aufgerufen.

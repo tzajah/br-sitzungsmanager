@@ -44,7 +44,7 @@ function punktOhneProtokoll(p) {
 function tagesordnungNutzlast(s) {
   const sitzung = {};
   /* teilnahme/gaeste reisen mit: Protokoll startet mit der Planung aus „Einladung", Erfasstes gewinnt (siehe tagesordnungEinspielen). */
-  const weg = ['tops', 'anlagenProt', 'endeTatsaechlich'];
+  const weg = ['tops', 'anlagenProt', 'beginnTatsaechlich', 'endeTatsaechlich'];
   for (const k of Object.keys(s)) if (!weg.includes(k)) sitzung[k] = s[k];
   sitzung.gaeste = (s.gaeste || []).map(g => Object.assign({}, g, { tops: (g.tops || []).slice() }));
   sitzung.tops = (s.tops || []).map(t => {
@@ -66,6 +66,7 @@ function ergebnisNutzlast(s) {
   return {
     sitzungId: s.id, nr: s.nr, datum: s.datum,
     teilnahme: s.teilnahme || {},
+    beginnTatsaechlich: s.beginnTatsaechlich || '',
     endeTatsaechlich: s.endeTatsaechlich || '',
     punkte: punkte
   };
@@ -108,6 +109,7 @@ function tagesordnungEinspielen(alt, neu) {
     if (eigeneAnwesenheit || !neu.teilnahme) neu.teilnahme = alt.teilnahme || {};
     if ((alt.gaeste || []).length || !neu.gaeste) neu.gaeste = alt.gaeste || [];
     neu.anlagenProt = alt.anlagenProt || [];
+    neu.beginnTatsaechlich = alt.beginnTatsaechlich || '';
     neu.endeTatsaechlich = alt.endeTatsaechlich || '';
   }
   return bilanz;
@@ -130,6 +132,7 @@ function ergebnisseEinspielen(sitzung, nutzlast) {
     bilanz.aufgaben += ziel.aufgaben.length;
   }
   sitzung.teilnahme = nutzlast.teilnahme || {};
+  if (nutzlast.beginnTatsaechlich) sitzung.beginnTatsaechlich = nutzlast.beginnTatsaechlich;
   if (nutzlast.endeTatsaechlich) sitzung.endeTatsaechlich = nutzlast.endeTatsaechlich;
   return bilanz;
 }
@@ -385,7 +388,7 @@ function istBildAnlage(a) {
 function standardTopsDefault() {
   return STANDARD_TOPS.concat([{ titel: 'Verschiedenes', kategorie: 'sonstiges' }])
     .map(t => ({ id: uid(), titel: t.titel, kategorie: t.kategorie,
-                 unterpunkte: (t.unterpunkte || []).map(u => ({ id: uid(), titel: u.titel })) }));
+                 unterpunkte: (t.unterpunkte || []).map(u => ({ id: uid(), titel: u.titel, kategorie: u.kategorie || '' })) }));
 }
 
 function standardUnterpunkteNorm(liste) {
@@ -393,7 +396,7 @@ function standardUnterpunkteNorm(liste) {
   return liste
     .map(u => (typeof u === 'string' ? { titel: u } : u))
     .filter(u => u && String(u.titel || '').trim())
-    .map(u => ({ id: u.id || uid(), titel: String(u.titel).trim() }));
+    .map(u => ({ id: u.id || uid(), titel: String(u.titel).trim(), kategorie: u.kategorie || '' }));
 }
 
 function kategorienDefault() {
@@ -417,10 +420,13 @@ function kategorienAnwenden() {
   KATEGORIEN = Object.fromEntries(liste.filter(k => k && k.key).map(k => [k.key, k.label || k.key]));
 }
 
-function ersteKategorie() {
-  const keys = Object.keys(KATEGORIEN);
-  return keys.length ? keys[0] : 'beratung';
+/* Die Kategorie ist optional: '' heißt „ohne". Ein unbekannter Schlüssel (gelöschte Kategorie) zählt ebenfalls als „ohne". */
+function kategorieOderLeer(k) { return KATEGORIEN[k] ? k : ''; }
+function kategorieOptionenHtml() {
+  return '<option value="">– ohne –</option>' +
+    Object.keys(KATEGORIEN).map(k => '<option value="' + esc(k) + '">' + esc(KATEGORIEN[k]) + '</option>').join('');
 }
+function kategorieText(p) { return p && p.kategorie ? (KATEGORIEN[p.kategorie] || p.kategorie) : ''; }
 
 function protokollVorlagenDefault() {
   return [
@@ -595,6 +601,7 @@ function neueSitzung(daten) {
     datum: '',
     beginn: '',
     endeGeplant: '',
+    beginnTatsaechlich: '',
     endeTatsaechlich: '',
     ort: '',
     videokonferenz: false,
@@ -615,7 +622,7 @@ function neuerTop(vorlage) {
   return Object.assign({
     id: uid(),
     titel: '',
-    kategorie: ersteKategorie(),
+    kategorie: '',
     beschreibung: '',
     referent: '',
     dauer: '',
@@ -631,6 +638,7 @@ function neuerUnterpunkt(vorlage) {
   return Object.assign({
     id: uid(),
     titel: '',
+    kategorie: '',
     beschreibung: '',
     referent: '',
     dauer: '',
@@ -652,7 +660,8 @@ function neuerBeschluss(daten, jahr) {
     enthaltung: '',
     ergebnis: 'auto',
     status: 'in_arbeit',
-    tags: []
+    tags: [],
+    nichtBeteiligt: {}   /* mitgliedId → Grund (NICHT_BETEILIGT) */
   };
 }
 
@@ -705,6 +714,19 @@ function teilnahmeVon(sitzung, mitgliedId) {
   return (sitzung.teilnahme && sitzung.teilnahme[mitgliedId]) || { status: '', vertretenDurch: '' };
 }
 
+/* Teilnahme nur an einzelnen TOPs (z. B. nachgerücktes Ersatzmitglied, spät gekommen): t.tops = [TOP-IDs].
+   Fehlt das Feld, gilt die ganze Sitzung. Unterpunkte zählen zu ihrem TOP. */
+function nurEinzelneTops(t) { return !!t && Array.isArray(t.tops); }
+function anwesendBeiTop(t, topId) { return !nurEinzelneTops(t) || !topId || t.tops.includes(topId); }
+function hauptTopVon(sitzung, punkt) {
+  return ((sitzung && sitzung.tops) || []).find(t => t === punkt || (t.unterpunkte || []).includes(punkt)) || null;
+}
+function teilweiseText(sitzung, t) {
+  if (!nurEinzelneTops(t)) return '';
+  const nrn = (sitzung.tops || []).map((top, i) => t.tops.includes(top.id) ? String(i + 1) : '').filter(Boolean);
+  return nrn.length ? 'nur TOP ' + nrn.join(', ') : 'bei keinem TOP';
+}
+
 function teilnehmerGruppen(daten, sitzung) {
   const g = { teilnehmend: [], entschuldigt: [], fehlt: [], offen: [] };
   for (const m of aktiveMitglieder(daten)) {
@@ -725,7 +747,7 @@ function nameMitRolle(m) {
 function anwesenheitsDaten(daten, s) {
   const mitglieder = teilnehmerGruppen(daten, s).teilnehmend.map(({ m, t }) => ({
     name: nameMitRolle(m),
-    abw: t.status === 'video' ? 'Video/Telefon' : ''
+    abw: [t.status === 'video' ? 'Video/Telefon' : '', teilweiseText(s, t)].filter(Boolean).join(', ')
   }));
   const gaeste = (s.gaeste || []).map(g => ({
     name: g.name || '',
@@ -747,6 +769,29 @@ function quorumInfo(daten, sitzung) {
     beschlussfaehig: groesse > 0 && teilnehmend >= erforderlich,
     erfasst: teilnehmend + g.entschuldigt.length + g.fehlt.length > 0
   };
+}
+
+const NICHT_BETEILIGT = { nicht_stimmberechtigt: 'nicht stimmberechtigt', abwesend: 'abwesend' };
+
+/* Stimmbasis eines Beschlusses: die teilnehmenden Mitglieder ohne die, die an dieser Abstimmung nicht beteiligt waren
+   (nicht stimmberechtigt oder zeitweise abwesend). Beschlussfähig nur, wenn mindestens die Hälfte an der Beschlussfassung teilnimmt. */
+function abstimmungsBasis(daten, sitzung, b, punkt) {
+  const q = quorumInfo(daten, sitzung);
+  const top = punkt ? hauptTopVon(sitzung, punkt) : null;
+  const markiert = (b && b.nichtBeteiligt) || {};
+  const dabei = teilnehmerGruppen(daten, sitzung).teilnehmend.filter(({ t }) => anwesendBeiTop(t, top && top.id));
+  const ausgenommen = dabei
+    .filter(({ m }) => NICHT_BETEILIGT[markiert[m.id]])
+    .map(({ m }) => ({ m, grund: markiert[m.id] }));
+  const teilnehmend = dabei.length - ausgenommen.length;
+  return {
+    dabei: dabei.map(({ m }) => m), teilnehmend, ausgenommen, erforderlich: q.erforderlich, erfasst: q.erfasst,
+    reduziert: teilnehmend < q.teilnehmend,   /* weniger als in der Sitzung – nur dann lohnt die eigene Warnung */
+    beschlussfaehig: q.groesse > 0 && teilnehmend >= q.erforderlich
+  };
+}
+function nichtBeteiligtText(basis) {
+  return basis.ausgenommen.map(e => e.m.name + ' (' + NICHT_BETEILIGT[e.grund] + ')').join(', ');
 }
 
 function alleBeschluesse(daten) {
@@ -1497,7 +1542,8 @@ async function erzeugeEinladungPdf(daten, s, opt) {
     if (teile.length) b.absatz(teile.join('   ·   '), { size: 8.5, farbe: b.c.grau, einzug: labelW, abstandDanach: 2 });
     if (top.beschreibung) b.absatz(top.beschreibung, { size: 10, einzug: labelW, abstandDanach: 3 });
     (top.unterpunkte || []).forEach((u, j) => {
-      b.absatz((i + 1) + '.' + (j + 1) + '  ' + (u.titel || '(ohne Titel)'), { size: 10, einzug: labelW, abstandDanach: u.beschreibung ? 1 : 2 });
+      b.absatz((i + 1) + '.' + (j + 1) + '  ' + (u.titel || '(ohne Titel)'), { size: 10, einzug: labelW, abstandDanach: u.beschreibung || u.kategorie ? 1 : 2 });
+      if (kategorieText(u)) b.absatz(kategorieText(u), { size: 8.5, farbe: b.c.grau, einzug: labelW + 12, abstandDanach: u.beschreibung ? 1 : 2 });
       if (u.beschreibung) b.absatz(u.beschreibung, { size: 9.5, farbe: b.c.grau, einzug: labelW + 12, abstandDanach: 2 });
       const uNrn = (u.anlagen || []).map(a => anlNrVon(a)).filter(n => n > 0);
       if (uNrn.length) b.absatz((uNrn.length > 1 ? 'Anlagen ' : 'Anlage ') + uNrn.join(', '), { size: 8.5, farbe: b.c.grau, einzug: labelW + 12, abstandDanach: 2 });
@@ -1588,14 +1634,19 @@ async function erzeugeAnwesenheitslistePdf(daten, s, opt) {
 
 /* Protokoll */
 
-function pdfPunktInhalt(b, q, punkt) {
+function pdfPunktInhalt(b, daten, s, punkt) {
   if (punkt.verlauf) b.verlaufBloeckeZeichnen(verlaufZuBloecken(sanitizeVerlaufHtml(punkt.verlauf)), { abstandDanach: 6 });
   for (const be of (punkt.beschluesse || [])) {
-    const aus = beschlussAuswertung(be, q.teilnehmend);
+    const basis = abstimmungsBasis(daten, s, be, punkt);
+    const aus = beschlussAuswertung(be, basis.teilnehmend);
     let stimmen = 'Abstimmungsergebnis: ' + aus.ja + ' Ja-Stimme(n), ' + aus.nein + ' Nein-Stimme(n), ' + aus.enth + ' Enthaltung(en)';
-    if (q.teilnehmend > 0) stimmen += ' bei ' + q.teilnehmend + ' an der Beschlussfassung teilnehmenden Mitgliedern.';
+    if (basis.teilnehmend > 0) stimmen += ' bei ' + basis.teilnehmend + ' an der Beschlussfassung teilnehmenden Mitgliedern.';
     else stimmen += '.';
+    if (basis.ausgenommen.length) stimmen += ' An der Abstimmung nicht beteiligt: ' + nichtBeteiligtText(basis) + '.';
     if (aus.warnung) stimmen += '  Achtung: ' + aus.warnung;
+    if (basis.reduziert && basis.erfasst && !basis.beschlussfaehig) {
+      stimmen += '  Achtung: Für diese Abstimmung war der Betriebsrat nicht beschlussfähig (erforderlich: ' + basis.erforderlich + ').';
+    }
     b.beschlussKasten({
       titel: 'Beschluss Nr. ' + beschlussNrText(be) + '  (' + (BESCHLUSS_STATUS[be.status] || BESCHLUSS_STATUS.in_arbeit) + ')',
       wortlaut: '"' + (be.antrag || '') + '"',
@@ -1635,7 +1686,7 @@ async function erzeugeProtokollPdf(daten, s, opt) {
 
   const q = quorumInfo(daten, s);
   b.metaZeile('Datum:', fmtDatum(s.datum, true) || '–', { wertFont: b.f.fett });
-  b.metaZeile('Beginn / Ende:', (fmtZeit(s.beginn) || '–') + '  bis  ' + (fmtZeit(s.endeTatsaechlich || s.endeGeplant) || '–'));
+  b.metaZeile('Beginn / Ende:', (fmtZeit(s.beginnTatsaechlich || s.beginn) || '–') + '  bis  ' + (fmtZeit(s.endeTatsaechlich || s.endeGeplant) || '–'));
   b.metaZeile('Ort:', s.ort || '–');
   b.metaZeile('Sitzungsleitung:', s.sitzungsleitung || vorsitzName(daten) || '–');
   b.metaZeile('Protokollführung:', s.protokollfuehrung || schriftfuehrerName(daten) || '–');
@@ -1644,7 +1695,7 @@ async function erzeugeProtokollPdf(daten, s, opt) {
 
   b.ueberschrift('Teilnahme', 2);
   const g = teilnehmerGruppen(daten, s);
-  const nameMitFunktion = e => e.m.name + (e.m.funktion && e.m.funktion !== 'Mitglied' ? ' (' + e.m.funktion + ')' : '') + (e.t.status === 'video' ? ' [per Video/Telefon]' : '');
+  const nameMitFunktion = e => e.m.name + (e.m.funktion && e.m.funktion !== 'Mitglied' ? ' (' + e.m.funktion + ')' : '') + (e.t.status === 'video' ? ' [per Video/Telefon]' : '') + (nurEinzelneTops(e.t) ? ' [' + teilweiseText(s, e.t) + ']' : '');
   b.metaZeile('Anwesend (' + g.teilnehmend.length + '):', g.teilnehmend.length ? g.teilnehmend.map(nameMitFunktion).join(', ') : '–');
   if (g.entschuldigt.length) b.metaZeile('Entschuldigt:', g.entschuldigt.map(e => e.m.name + (e.t.vertretenDurch ? ' (vertreten wegen ' + e.t.vertretenDurch + ')' : '')).join(', '));
   if (g.fehlt.length) b.metaZeile('Unentschuldigt:', g.fehlt.map(e => e.m.name).join(', '));
@@ -1666,6 +1717,11 @@ async function erzeugeProtokollPdf(daten, s, opt) {
     b.absatz('Die per Video-/Telefonkonferenz teilnehmenden Mitglieder haben ihre Teilnahme gegenüber der Sitzungsleitung in Textform bestätigt; die Bestätigungen sind dieser Niederschrift beigefügt.', { size: 9.5, farbe: b.c.grau, abstandDanach: 2 });
   }
 
+  if (s.beginnTatsaechlich) {
+    b.abstand(4);
+    b.absatz('Die Sitzungsleitung eröffnet die Sitzung um ' + fmtZeit(s.beginnTatsaechlich) + '.', { abstandDanach: 2 });
+  }
+
   /* Alle Anlagen der Sitzung werden im Protokoll benannt – die zum Protokoll wie die zur Tagesordnung. */
   const anlProt = anlagenProtokoll(s).concat(anlagenTagesordnung(s));
   (s.tops || []).forEach((top, i) => {
@@ -1674,10 +1730,11 @@ async function erzeugeProtokollPdf(daten, s, opt) {
     if (top.kategorie) teile.push(KATEGORIEN[top.kategorie] || top.kategorie);
     if (top.referent) teile.push('Referent/in: ' + top.referent);
     if (teile.length) b.absatz(teile.join('   ·   '), { size: 8.5, farbe: b.c.grau, abstandDanach: 4 });
-    pdfPunktInhalt(b, q, top);
+    pdfPunktInhalt(b, daten, s, top);
     (top.unterpunkte || []).forEach((u, j) => {
       b.ueberschrift((i + 1) + '.' + (j + 1) + '  ' + (u.titel || '(ohne Titel)'), 3);
-      pdfPunktInhalt(b, q, u);
+      if (kategorieText(u)) b.absatz(kategorieText(u), { size: 8.5, farbe: b.c.grau, abstandDanach: 4 });
+      pdfPunktInhalt(b, daten, s, u);
     });
   });
 
@@ -1747,7 +1804,6 @@ async function erzeugeGekuerztesProtokollPdf(daten, s, gast, opt) {
   b.absatz('Dieser Auszug enthält ausschließlich die Punkte, an denen der Gast teilgenommen hat: ' +
     (bezeichnung || '–') + '.', { size: 9.5, farbe: b.c.grau, abstandDanach: 8 });
 
-  const q = quorumInfo(daten, s);
   auswahl.forEach(({ top, nr, voll, unterpunkte }) => {
     b.ueberschrift('TOP ' + nr + ':  ' + (top.titel || '(ohne Titel)'), 2);
     const teile = [];
@@ -1755,15 +1811,17 @@ async function erzeugeGekuerztesProtokollPdf(daten, s, gast, opt) {
     if (top.referent) teile.push('Referent/in: ' + top.referent);
     if (teile.length) b.absatz(teile.join('   ·   '), { size: 8.5, farbe: b.c.grau, abstandDanach: 4 });
     if (voll) {
-      pdfPunktInhalt(b, q, top);
+      pdfPunktInhalt(b, daten, s, top);
       (top.unterpunkte || []).forEach((u, j) => {
         b.ueberschrift(nr + '.' + (j + 1) + '  ' + (u.titel || '(ohne Titel)'), 3);
-        pdfPunktInhalt(b, q, u);
+        if (kategorieText(u)) b.absatz(kategorieText(u), { size: 8.5, farbe: b.c.grau, abstandDanach: 4 });
+        pdfPunktInhalt(b, daten, s, u);
       });
     } else {
       unterpunkte.forEach(({ u, unr }) => {
         b.ueberschrift(unr + '  ' + (u.titel || '(ohne Titel)'), 3);
-        pdfPunktInhalt(b, q, u);
+        if (kategorieText(u)) b.absatz(kategorieText(u), { size: 8.5, farbe: b.c.grau, abstandDanach: 4 });
+        pdfPunktInhalt(b, daten, s, u);
       });
     }
   });

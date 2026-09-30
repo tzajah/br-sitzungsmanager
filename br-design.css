@@ -397,6 +397,10 @@ input.eingabe,select.eingabe,textarea.eingabe{
   margin-top:calc(var(--takt) * 2);background:var(--papier)}
 .up-kopf{display:flex;align-items:center;gap:calc(var(--takt) * 2.5);margin-bottom:calc(var(--takt) * 1.5)}
 .up-werkzeuge{display:flex;gap:var(--takt);flex:none}
+.tn-teilweise{display:flex;align-items:center;gap:var(--takt);font-size:.9em}
+.tn-topwahl{display:flex;flex-wrap:wrap;gap:var(--takt) calc(var(--takt) * 3);margin-top:var(--takt)}
+.tn-topwahl label{display:flex;align-items:center;gap:var(--takt);white-space:nowrap}
+.up-kategorie{max-width:calc(var(--takt) * 65);margin-bottom:calc(var(--takt) * 1.5)}
 .unterpunkte-prot{margin-top:var(--takt)}
 .unterpunkt-prot{position:relative;margin:calc(var(--takt) * 2.5) 0 0 calc(var(--takt) * 3);
   padding-left:calc(var(--takt) * 3.5)}

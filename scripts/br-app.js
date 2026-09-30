@@ -350,7 +350,7 @@ function migriere(d) {
   delete d.mitglieder;
   d.dokumente = d.dokumente || [];
   d.beschlussTags = (d.beschlussTags || []).map(t => ({ id: t.id || uid(), name: t.name || '', farbe: t.farbe || TAG_FARBEN[0] }));
-  /* Kategorien zuerst normalisieren – die StandardTOP-Migration braucht einen gültigen Fallback-Schlüssel daraus. */
+  /* Kategorien normalisieren; TOPs ohne Kategorie bleiben ohne (die Kategorie ist optional). */
   if (!Array.isArray(d.kategorien) || !d.kategorien.length) d.kategorien = kategorienDefault();
   else {
     const gesehen = new Set();
@@ -361,10 +361,9 @@ function migriere(d) {
     });
     if (!d.kategorien.length) d.kategorien = kategorienDefault();
   }
-  const standardKat = d.kategorien[0].key;
   if (!Array.isArray(d.standardTops) || !d.standardTops.length) d.standardTops = standardTopsDefault();
   else d.standardTops = d.standardTops.map(t => ({
-    id: t.id || uid(), titel: t.titel || '', kategorie: t.kategorie || standardKat,
+    id: t.id || uid(), titel: t.titel || '', kategorie: t.kategorie || '',
     unterpunkte: standardUnterpunkteNorm(t.unterpunkte)   /* fehlt in Ständen vor v0.27.0 */
   }));
   if (!Array.isArray(d.protokollVorlagen)) d.protokollVorlagen = protokollVorlagenDefault();
@@ -1426,7 +1425,7 @@ function renderTab(c, s) {
 
 function beschlussUebersichtDaten() {
   return alleBeschluesse(daten).map(e => {
-    const basis = quorumInfo(daten, e.sitzung).teilnehmend;
+    const basis = abstimmungsBasis(daten, e.sitzung, e.b, e.top).teilnehmend;
     return { sitzung: e.sitzung, top: e.top, b: e.b, nr: e.nr, aus: beschlussAuswertung(e.b, basis) };
   }).sort((x, y) => {
     const dx = x.sitzung.datum || x.sitzung.angelegtAm || '';
@@ -2034,15 +2033,15 @@ function externeStandardTopsUebernehmen() {
   const ext = window.BR_STANDARD_TOPS;
   if (!Array.isArray(ext) || !ext.length) return false;
   const norm = ext.filter(t => t && t.titel).map(t => ({
-    titel: String(t.titel).trim(), kategorie: KATEGORIEN[t.kategorie] ? t.kategorie : ersteKategorie(),
+    titel: String(t.titel).trim(), kategorie: kategorieOderLeer(t.kategorie),
     unterpunkte: standardUnterpunkteNorm(t.unterpunkte)
   }));
   if (!norm.length) return false;
   const sig = arr => (arr || []).map(t => (t.titel || '').trim() + '|' + (t.kategorie || '') +
-    '|' + (t.unterpunkte || []).map(u => (u.titel || '').trim()).join('␟')).join('\n');
+    '|' + (t.unterpunkte || []).map(u => (u.titel || '').trim() + '·' + (u.kategorie || '')).join('␟')).join('\n');
   if (sig(norm) === sig(daten.standardTops)) return false;   /* bereits aktuell */
   daten.standardTops = norm.map(t => ({ id: uid(), titel: t.titel, kategorie: t.kategorie,
-                                        unterpunkte: t.unterpunkte.map(u => ({ id: uid(), titel: u.titel })) }));
+                                        unterpunkte: t.unterpunkte.map(u => ({ id: uid(), titel: u.titel, kategorie: u.kategorie })) }));
   return true;
 }
 
@@ -2143,9 +2142,9 @@ function standardTopsEinfuegen(sitzung) {
     if (titel && !vorhanden.has(titel.toLowerCase())) {
       sitzung.tops.push(neuerTop({
         titel: titel,
-        kategorie: KATEGORIEN[v.kategorie] ? v.kategorie : ersteKategorie(),
+        kategorie: kategorieOderLeer(v.kategorie),
         /* Eigene IDs je Sitzung – die Vorlagen-IDs dürfen nicht geteilt werden. */
-        unterpunkte: (v.unterpunkte || []).map(u => neuerUnterpunkt({ titel: u.titel || '' }))
+        unterpunkte: (v.unterpunkte || []).map(u => neuerUnterpunkt({ titel: u.titel || '', kategorie: kategorieOderLeer(u.kategorie) }))
       }));
       vorhanden.add(titel.toLowerCase());
       eingefuegt++;
@@ -2236,14 +2235,16 @@ function anwesenheitTabelle(el, s, beiAenderung) {
         (vorbelegt ? ' – ' + vorbelegt + ' davon wurde(n) als „Entschuldigt" vorbelegt' : '') +
         '. Bitte prüfen und ggf. das geladene Ersatzmitglied eintragen.</div>'
       : '') +
-    '<table class="tn-tabelle"><thead><tr><th style="width:34%">Mitglied</th><th style="width:24%">Status</th><th>Vertreten durch (Ersatzmitglied)</th></tr></thead><tbody>' +
+    '<table class="tn-tabelle"><thead><tr><th style="width:34%">Mitglied</th><th style="width:24%">Status</th><th>Vertreten durch (Ersatzmitglied) / Teilnahme</th></tr></thead><tbody>' +
     mitglieder.map(m =>
       '<tr data-mid="' + m.id + '"><td><b>' + esc(m.name) + '</b><br><span class="klein-grau">' + esc(m.funktion) +
         (urlaubJe[m.id] ? ' · <b>' + esc(urlaubJe[m.id].grund) + ' bis ' + esc(fmtDatum(urlaubJe[m.id].bis)) + '</b>' : '') + '</span></td>' +
       '<td><select data-f="status"><option value="">– offen –</option>' +
         Object.keys(TEILNAHME_LABEL).map(k => '<option value="' + k + '">' + TEILNAHME_LABEL[k] + '</option>').join('') +
       '</select></td>' +
-      '<td><input data-f="vertreten" placeholder="nur bei „Entschuldigt" relevant"></td></tr>'
+      '<td><input data-f="vertreten" placeholder="nur bei „Entschuldigt" relevant">' +
+        '<div data-teil><label class="tn-teilweise"><input type="checkbox" data-f="teilweise"> nur bei einzelnen TOPs anwesend</label>' +
+        '<div class="tn-topwahl" data-topwahl></div></div></td></tr>'
     ).join('') + '</tbody></table>';
 
   el.querySelectorAll('tr[data-mid]').forEach(tr => {
@@ -2256,7 +2257,36 @@ function anwesenheitTabelle(el, s, beiAenderung) {
     const ver = tr.querySelector('[data-f="vertreten"]');
     sel.value = teilnahmeVon(s, mid).status || '';
     ver.value = teilnahmeVon(s, mid).vertretenDurch || '';
-    const sichtbarkeit = () => { ver.style.visibility = sel.value === 'entschuldigt' ? 'visible' : 'hidden'; };
+    /* Teil-Anwesenheit: z. B. ein Ersatzmitglied, das nur für einen TOP nachrückt. Zählt für die Beschlüsse genau dieser TOPs. */
+    const teil = tr.querySelector('[data-teil]');
+    const teilweise = tr.querySelector('[data-f="teilweise"]');
+    const topwahl = tr.querySelector('[data-topwahl]');
+    const zeichneTopwahl = () => {
+      const tn = teilnahmeVon(s, mid);
+      teilweise.checked = nurEinzelneTops(tn);
+      if (!teilweise.checked) { topwahl.innerHTML = ''; return; }
+      topwahl.innerHTML = (s.tops || []).length
+        ? s.tops.map((top, i) => '<label title="' + esc(top.titel || '') + '"><input type="checkbox" value="' + esc(top.id) + '"' +
+            (tn.tops.includes(top.id) ? ' checked' : '') + '> TOP ' + (i + 1) + '</label>').join('')
+        : '<span class="klein-grau">Noch keine TOPs.</span>';
+      topwahl.querySelectorAll('input').forEach(cb => {
+        cb.disabled = !darfBearbeiten();
+        cb.onchange = () => {
+          t().tops = Array.from(topwahl.querySelectorAll('input:checked')).map(x => x.value);
+          speichern(); if (beiAenderung) beiAenderung();
+        };
+      });
+    };
+    teilweise.disabled = !darfBearbeiten();
+    teilweise.onchange = () => {
+      if (teilweise.checked) t().tops = []; else delete t().tops;
+      speichern(); zeichneTopwahl(); if (beiAenderung) beiAenderung();
+    };
+    zeichneTopwahl();
+    const sichtbarkeit = () => {
+      ver.style.display = sel.value === 'entschuldigt' ? '' : 'none';
+      teil.style.display = sel.value === 'anwesend' || sel.value === 'video' ? '' : 'none';
+    };
     sichtbarkeit();
     sel.onchange = () => { t().status = sel.value; speichern(); sichtbarkeit(); if (beiAenderung) beiAenderung(); };
     ver.oninput = () => { t().vertretenDurch = ver.value; speichern(); };

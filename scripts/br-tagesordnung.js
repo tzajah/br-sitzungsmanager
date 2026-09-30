@@ -126,8 +126,7 @@ function topEditor(s, top, i) {
     '<button class="btn btn-symbol btn-geist btn-gefahr" data-tu="weg" title="TOP entfernen"><svg class="ic"><use href="#ic-weg"/></svg></button>' +
     '</div></div>' +
     '<div class="top-koerper"><div class="raster s3">' +
-    '<div class="feld"><label>Art des TOP</label><select data-f="kategorie">' +
-      Object.keys(KATEGORIEN).map(k => '<option value="' + k + '">' + KATEGORIEN[k] + '</option>').join('') + '</select></div>' +
+    '<div class="feld"><label>Art des TOP</label><select data-f="kategorie">' + kategorieOptionenHtml() + '</select></div>' +
     '<div class="feld"><label>Referent/in</label><input data-f="referent" placeholder="optional"></div>' +
     '<div class="feld"><label>Geplante Dauer (Min.)</label><input data-f="dauer" type="number" min="0" step="5" placeholder="optional"></div>' +
     '</div>' +
@@ -139,7 +138,7 @@ function topEditor(s, top, i) {
   const titel = wrap.querySelector('.top-titel-eingabe');
   bindeText(titel, () => top.titel, v => { top.titel = v; });
   const kat = wrap.querySelector('[data-f="kategorie"]');
-  kat.value = KATEGORIEN[top.kategorie] ? top.kategorie : ersteKategorie();
+  kat.value = kategorieOderLeer(top.kategorie);
   kat.onchange = () => { top.kategorie = kat.value; speichern(); };
   bindeText(wrap.querySelector('[data-f="referent"]'), () => top.referent, v => { top.referent = v; });
   bindeText(wrap.querySelector('[data-f="dauer"]'), () => top.dauer, v => { top.dauer = v; });
@@ -188,10 +187,14 @@ function renderUnterpunkteEditor(container, s, top, i) {
         '<button class="btn btn-symbol btn-geist" data-tu="runter" title="Nach unten"><svg class="ic"><use href="#ic-runter"/></svg></button>' +
         '<button class="btn btn-symbol btn-geist btn-gefahr" data-tu="weg" title="Unterpunkt entfernen"><svg class="ic"><use href="#ic-weg"/></svg></button>' +
         '</div></div>' +
+        '<div class="feld up-kategorie"><label>Art des Unterpunkts</label><select data-f="kategorie">' + kategorieOptionenHtml() + '</select></div>' +
         '<div class="feld"><textarea data-f="beschreibung" placeholder="Erläuterung / Beschlussvorlage für die Einladung"></textarea></div>' +
         '<div class="anlagen-bereich" data-anlagen></div>';
       box.appendChild(z);
       bindeText(z.querySelector('[data-f="titel"]'), () => u.titel, v => { u.titel = v; });
+      const ukat = z.querySelector('[data-f="kategorie"]');
+      ukat.value = kategorieOderLeer(u.kategorie);
+      ukat.onchange = () => { u.kategorie = ukat.value; speichern(); };
       bindeText(z.querySelector('[data-f="beschreibung"]'), () => u.beschreibung, v => { u.beschreibung = v; });
       renderAnlagenWidget(z.querySelector('[data-anlagen]'), u.anlagen || (u.anlagen = []), 'Anlagen zu diesem Unterpunkt');
       z.querySelectorAll('.up-werkzeuge [data-tu]').forEach(btn => btn.onclick = () => {
@@ -208,5 +211,6 @@ function renderUnterpunkteEditor(container, s, top, i) {
     });
   };
   zeichne();
-  neuBtn.onclick = () => { liste.push(neuerUnterpunkt()); speichern(); renderHaupt(); };
+  /* Neuer Unterpunkt startet mit der Kategorie des TOP und lässt sich danach frei ändern. */
+  neuBtn.onclick = () => { liste.push(neuerUnterpunkt({ kategorie: kategorieOderLeer(top.kategorie) })); speichern(); renderHaupt(); };
 }

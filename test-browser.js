@@ -554,12 +554,13 @@ async function pruefeUebergabe() {
       s.teilnahme = { m1: { status: 'anwesend', vertretenDurch: '' },
                       m2: { status: 'anwesend', vertretenDurch: '' },
                       m3: { status: 'anwesend', vertretenDurch: '' } };
+      s.beginnTatsaechlich = '16:05';
       s.endeTatsaechlich = '17:30';
       const n = ergebnisNutzlast(s);
       return { nutzlast: n, felder: Object.keys(n).sort(), roh: JSON.stringify(n) };
     })()
   `);
-  assert.deepStrictEqual(erg.felder, ['datum', 'endeTatsaechlich', 'nr', 'punkte', 'sitzungId', 'teilnahme']);
+  assert.deepStrictEqual(erg.felder, ['beginnTatsaechlich', 'datum', 'endeTatsaechlich', 'nr', 'punkte', 'sitzungId', 'teilnahme']);
   assert.strictEqual(erg.nutzlast.punkte.length, 1, 'nur Punkte mit Inhalt');
   assert.ok(!erg.roh.includes('Geplanter TOP'), 'keine Tagesordnung im Rückweg');
   assert.ok(!erg.roh.includes('Schon protokolliert'), 'kein Verlauf im Rückweg – der bleibt im Protokoll');
@@ -585,6 +586,7 @@ async function pruefeUebergabe() {
         aufgabe: neu.tops[0].aufgaben[0].was,
         titelUnveraendert: neu.tops[0].titel,
         teilnahme: Object.keys(neu.teilnahme).length,
+        beginn: neu.beginnTatsaechlich,
         ende: neu.endeTatsaechlich,
         auswertungBasis: uebersicht[0].aus.basis,
         angenommen: uebersicht[0].aus.angenommen,
@@ -597,6 +599,7 @@ async function pruefeUebergabe() {
   assert.strictEqual(rueck.aufgabe, 'Schreiben aufsetzen', 'die Aufgabe kommt an');
   assert.strictEqual(rueck.titelUnveraendert, 'Geplanter TOP', 'die Tagesordnung des Managers bleibt seine');
   assert.strictEqual(rueck.teilnahme, 3, 'die Teilnahme reist mit');
+  assert.strictEqual(rueck.beginn, '16:05', 'der tatsächliche Beginn reist mit');
   assert.strictEqual(rueck.ende, '17:30');
   assert.strictEqual(rueck.auswertungBasis, 3, 'die Beschluss-Übersicht rechnet gegen die drei Teilnehmenden');
   assert.strictEqual(rueck.angenommen, true, '5 Ja bei 3 Teilnehmenden – angenommen');
@@ -1884,6 +1887,103 @@ async function pruefeVerlaufUmbrueche() {
   console.log('OK  Verlauf: Zeilenumbrüche überleben Speichern, Laden und Export');
 }
 
+/* Kategorie am Unterpunkt, nicht beteiligte Mitglieder je Beschluss, tatsächlicher Sitzungsbeginn */
+async function pruefeUnterpunktKategorieBeteiligungBeginn() {
+  const browser = await chromium.launch();
+  const seite = await browser.newPage();
+  const fehler = [];
+  seite.on('pageerror', e => fehler.push(e.message));
+  await seite.goto(DATEI('BR-Protokoll.html'));
+  await seite.waitForFunction('typeof APP_MODUS !== "undefined"', null, { timeout: 5000 });
+  await seite.evaluate(AUFBAU);
+
+  const erg = await seite.evaluate(`
+    (async () => {
+      const s = daten.sitzungen[0];
+      const top = s.tops[0];
+      top.unterpunkte = [neuerUnterpunkt({ titel: 'Teilfrage' })];
+      const to = document.createElement('div');
+      document.body.appendChild(to);
+      to.appendChild(topEditor(s, top, 0));
+      const topKat = to.querySelector('.top-koerper > .raster [data-f="kategorie"]').value;
+      const ukat = to.querySelector('.unterpunkt-zeile [data-f="kategorie"]');
+      const ukatStart = ukat.value;
+      ukat.value = 'beschluss'; ukat.dispatchEvent(new Event('change'));
+      top.kategorie = 'beratung';
+      const to2 = document.createElement('div');
+      to2.appendChild(topEditor(s, top, 0));
+      to2.querySelector('.unterpunkte-bereich > [data-tu="neu"]').click();
+      const geerbt = top.unterpunkte[1].kategorie;
+      top.unterpunkte.pop();
+
+      /* Teil-Anwesenheit über die Tabelle: m3 nur bei einem anderen TOP */
+      s.tops.push(neuerTop({ titel: 'Zweiter TOP' }));
+      const tn = document.createElement('div');
+      for (const id of ['m1', 'm2', 'm3']) s.teilnahme[id] = { status: 'anwesend', vertretenDurch: '' };
+      anwesenheitTabelle(tn, s, null);
+      const zeile3 = tn.querySelector('tr[data-mid="m3"]');
+      const tw = zeile3.querySelector('[data-f="teilweise"]');
+      tw.checked = true; tw.dispatchEvent(new Event('change'));
+      const topCb = zeile3.querySelectorAll('[data-topwahl] input');
+      topCb[1].checked = true; topCb[1].dispatchEvent(new Event('change'));
+      const teilTops = s.teilnahme.m3.tops.slice();
+      const basisTop1 = abstimmungsBasis(daten, s, { nichtBeteiligt: {} }, top).teilnehmend;
+      delete s.teilnahme.m3.tops;
+      s.tops.pop();
+
+      for (const id of ['m1', 'm2', 'm3']) s.teilnahme[id] = { status: 'anwesend', vertretenDurch: '' };
+      const b = neuerBeschluss(daten, 2026);
+      Object.assign(b, { antrag: 'Wortlaut', ja: '1', nein: '0', enthaltung: '0' });
+      top.beschluesse = [b];
+      const c = document.createElement('div');
+      document.body.appendChild(c);
+      renderTabProtokoll(c, s);
+      const block = c.querySelector('.beschluss-block');
+      const vorher = block.querySelector('[data-ergebnis]').textContent;
+      const waehle = (id, grund) => {
+        const sel = block.querySelector('[data-mitglied="' + id + '"]');
+        sel.value = grund; sel.dispatchEvent(new Event('change'));
+      };
+      waehle('m2', 'abwesend');
+      waehle('m3', 'nicht_stimmberechtigt');
+
+      c.querySelector('[data-jetzt="fBeginnT"]').click();
+      c.querySelector('[data-jetzt="fEndeT"]').click();
+      const pdf = await erzeugeProtokollPdf(daten, s, {});
+      return {
+        topKat, ukatStart, ukatGespeichert: top.unterpunkte[0].kategorie, geerbt,
+        topCbZahl: topCb.length, teilTops, basisTop1,
+        vorher, nachher: block.querySelector('[data-ergebnis]').textContent,
+        warnung: block.querySelector('[data-warnung]').textContent,
+        titel: block.querySelector('[data-beteiligung-titel]').textContent,
+        auswahl: block.querySelectorAll('[data-mitglied]').length,
+        gespeichert: b.nichtBeteiligt,
+        beginn: s.beginnTatsaechlich, beginnFeld: c.querySelector('#fBeginnT').value, ende: s.endeTatsaechlich,
+        pdf: pdf.length
+      };
+    })()
+  `);
+  assert.strictEqual(erg.topKat, '', 'neuer TOP steht in der Auswahl auf „– ohne –"');
+  assert.strictEqual(erg.ukatStart, '', 'Unterpunkt startet ohne Kategorie');
+  assert.strictEqual(erg.ukatGespeichert, 'beschluss', 'Kategorie am Unterpunkt wird gespeichert');
+  assert.strictEqual(erg.geerbt, 'beratung', 'neuer Unterpunkt übernimmt die Kategorie des TOP');
+  assert.strictEqual(erg.topCbZahl, 2, 'Teil-Anwesenheit bietet jeden TOP zur Auswahl');
+  assert.strictEqual(erg.teilTops.length, 1, 'die gewählten TOPs werden gespeichert');
+  assert.strictEqual(erg.basisTop1, 2, 'wer nur bei TOP 2 da ist, stimmt bei TOP 1 nicht mit');
+  assert.ok(erg.vorher.startsWith('Abgelehnt'), '1 Ja von 3 Teilnehmenden ist keine Mehrheit');
+  assert.ok(erg.nachher.startsWith('Angenommen'), '1 Ja vom einzig Beteiligten ist die Mehrheit');
+  assert.ok(erg.warnung.includes('nicht beschlussfähig'), 'zu wenige Beteiligte werden gemeldet');
+  assert.strictEqual(erg.titel, 'Nicht an der Abstimmung beteiligt (2)');
+  assert.strictEqual(erg.auswahl, 3, 'zur Auswahl stehen die teilnehmenden Mitglieder');
+  assert.deepStrictEqual(erg.gespeichert, { m2: 'abwesend', m3: 'nicht_stimmberechtigt' });
+  assert.ok(/^\d\d:\d\d$/.test(erg.beginn) && erg.beginnFeld === erg.beginn, '„Jetzt" trägt den Beginn ein');
+  assert.ok(/^\d\d:\d\d$/.test(erg.ende), '„Jetzt" trägt auch das Ende ein');
+  assert.ok(erg.pdf > 1000, 'die Niederschrift entsteht');
+  assert.deepStrictEqual(fehler, [], 'keine Laufzeitfehler');
+  await browser.close();
+  console.log('OK  Unterpunkt-Kategorie, Beteiligung je Beschluss, tatsächlicher Sitzungsbeginn');
+}
+
 /* Formatgleichheit: Die Werkzeugseiten führen eigene Kopien des Krypto-Kerns. Hier schreibt und liest die echte App
    (sicherungVerpacken/sicherungEntpacken, zugangErzeugen) – ohne br-zugang.js, also auch in einem frischen Klon. */
 async function pruefeFormatgleichheit() {
@@ -1990,6 +2090,7 @@ async function pruefeFormatgleichheit() {
   await pruefeUmwandler();
   await pruefeAufraeumen();
   await pruefeFormatgleichheit();
+  await pruefeUnterpunktKategorieBeteiligungBeginn();
   await pruefeAnmeldung();
   await pruefeErstinbetriebnahme();
   await pruefeVerlaufUmbrueche();
