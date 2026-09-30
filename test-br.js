@@ -226,4 +226,26 @@ assert.deepStrictEqual(roh(k.standardUnterpunkteNorm([{ titel: 'A', kategorie: '
   [['A', 'beratung'], ['B', '']], 'Standard-Unterpunkte behalten ihre Kategorie');
 console.log('OK  Unterpunkte der Standard-TOPs tragen eine Kategorie');
 
+/* Erscheinungsbild: aus einer Akzentfarbe abgeleitete Varianten, Kontrastregel bleibt gewahrt */
+const std = roh(k.akzentPalette(undefined));
+assert.deepStrictEqual([std.akzent, std.dunkel, std.hell, std.rand], ['#009057', '#00673E', '#E2F1EA', '#9CCDB7'],
+  'ohne Wahl bleibt das Freigabegrün aus DESIGN.md exakt erhalten');
+assert.strictEqual(k.akzentPalette('kein-hex').akzent, '#009057', 'ungültige Eingabe fällt auf den Standard zurück');
+for (const [hex] of roh(k.AKZENT_VORSCHLAEGE)) {
+  const p = roh(k.akzentPalette(hex));
+  assert.ok(k.farbKontrast(p.akzent, '#FFFFFF') >= 3, hex + ': Fläche mindestens 3:1 auf Weiß');
+  assert.ok(k.farbKontrast(p.dunkel, '#FFFFFF') >= 4.5, hex + ': weiße Schrift auf der dunklen Variante mindestens 4,5:1');
+  assert.ok(k.farbKontrast(p.praesDunkel, '#0E1211') >= 6, hex + ': Präsentation dunkel lesbar');
+}
+const gelb = roh(k.akzentPalette('#ffd400'));
+assert.ok(gelb.angepasst && gelb.akzent !== '#FFD400', 'zu helles Gelb wird abgedunkelt');
+assert.ok(k.farbKontrast(gelb.akzent, '#FFFFFF') >= 3 && k.farbKontrast(gelb.dunkel, '#FFFFFF') >= 4.5);
+assert.ok(!k.akzentPalette('#1F5FAD').angepasst, 'ein ausreichend dunkles Blau bleibt unverändert');
+assert.deepStrictEqual(roh(k.erscheinung(undefined)), { akzent: '#009057', name: '', untertitel: '', logoSeitenleiste: false },
+  'ältere Stände ohne Erscheinungsbild bekommen die Vorgaben');
+const pdfF = k.pdfFarben((r, g, b) => [r, g, b], k.akzentPalette('#1F5FAD'));
+assert.deepStrictEqual(roh(pdfF.akzent).map(v => Math.round(v * 255)), [0x1F, 0x5F, 0xAD], 'die PDFs übernehmen die Akzentfarbe');
+assert.deepStrictEqual(roh(pdfF.gruen), [0, 0.404, 0.243], '„angenommen" bleibt grün');
+console.log('OK  Erscheinungsbild: Akzentfarbe mit abgeleiteten Varianten, Kontrast gewahrt');
+
 console.log('\nAlle Prüfungen bestanden.');

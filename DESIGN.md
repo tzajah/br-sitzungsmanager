@@ -278,6 +278,16 @@ der Farbe steht oder die Farbe selbst zu Text wird, füllt `akzent-dunkel`
 (6,9:1). Auf dunklem Grund übernimmt `signal-hell` (6,1:1). Das ist eine
 Kontrastregel, keine Geschmacksfrage.
 
+**Die Akzentfarbe ist anpassbar, die Regel nicht.** Jedes Gremium kann im
+Admin-Menü („Erscheinungsbild") eine eigene Akzentfarbe wählen. Die Varianten
+werden daraus abgeleitet (`akzent-dunkel` 28,5 % Richtung Schwarz, `akzent-hell`
+88 % und `akzent-rand` 60 % Richtung Weiß, `akzent-auf-dunkel` für die
+Seitenleiste) und so weit nachgeführt, dass die Kontrastregel hält: Fläche
+≥ 3:1 auf Weiß, weiße Schrift auf `akzent-dunkel` ≥ 4,5:1, Akzent auf dunklem
+Grund ≥ 6:1. Zu helle Wünsche werden sichtbar abgedunkelt. Die Signalfarben
+bleiben fest – „angenommen" und das OK-Signal (`signal-hell`) sind immer grün,
+denn sie tragen Bedeutung, nicht Marke.
+
 **Die Signalregel.** Es gibt genau drei Signalfarben und jede hat genau eine
 Bedeutung: Grün gibt frei, Gelb warnt, Rot hält an. Eine vierte Signalfarbe
 oder eine zweite Bedeutung für dieselbe Farbe gibt es nicht.

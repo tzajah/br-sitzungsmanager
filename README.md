@@ -130,6 +130,9 @@ Anwesenheitsliste, Niederschrift) nach den einschlägigen Vorschriften des BetrV
   Fortschrittsleiste, Zahl der Beschlüsse, Aufgaben und Gäste sowie ein Hinweis,
   solange eine Sitzungspause läuft – dauerhaft in der Seitenleiste sichtbar. Die
   Sprungleiste im Protokoll-Reiter zeigt je TOP, ob dort schon etwas erfasst ist.
+- **Eigenes Erscheinungsbild** je Gremium (Admin-Menü → „Erscheinungsbild“): Akzentfarbe
+  für App, PDFs und Präsentation (Varianten werden abgeleitet, der Kontrast bleibt gewahrt),
+  Name und Untertitel der Anwendung sowie das Logo in der Seitenleiste.
 - **Beschluss-Tags**: farbige Schlagworte, im Admin-Menü konfigurierbar, je
   Beschluss zuweisbar, in der Beschluss-Übersicht filterbar und im Export.
 - **Dokument-Ordner**: das Dokumente-Panel gruppiert je Sitzung in Ordnern;

@@ -1102,6 +1102,38 @@ function sitzungKarteHtml(s) {
     '<div class="sk-status">' + esc(st.label) + '</div></button>';
 }
 
+/* Erscheinungsbild des Gremiums auf die Oberfläche anwenden: Akzentfarbe (CSS-Variablen), Name, Untertitel, Logo.
+   Vor dem Entschlüsseln sind keine Stammdaten da – dann gilt das Standard-Erscheinungsbild. */
+function erscheinungAnwenden() {
+  if (typeof document === 'undefined') return;
+  const st = (daten && daten.stammdaten) || {};
+  const e = erscheinung(st);
+  const p = akzentPalette(e.akzent);
+  const vars = {
+    '--akzent': p.akzent, '--akzent-dunkel': p.dunkel, '--akzent-hell': p.hell, '--akzent-rand': p.rand,
+    '--akzent-flaeche': 'rgba(' + hexZuRgb(p.akzent).join(',') + ',.16)', '--akzent-auf-dunkel': p.praesDunkel
+  };
+  const root = document.documentElement.style;
+  for (const [k, v] of Object.entries(vars)) {
+    if (e.akzent === STANDARD_AKZENT) root.removeProperty(k); else root.setProperty(k, v);
+  }
+  const marke = document.querySelector('.seitenleiste .marke');
+  if (!marke) return;
+  const h1 = marke.querySelector('h1'), ut = marke.querySelector('.untertitel');
+  if (h1 && h1.dataset.standard == null) h1.dataset.standard = h1.textContent;
+  if (ut && ut.dataset.standard == null) ut.dataset.standard = ut.textContent;
+  if (h1) h1.textContent = e.name || h1.dataset.standard;
+  if (ut) ut.textContent = e.untertitel || ut.dataset.standard;
+  if (document.body.dataset.titelStandard == null) document.body.dataset.titelStandard = document.title;
+  document.title = e.name ? e.name + ' – ' + (APP_MODUS === 'protokoll' ? 'Protokoll' : 'Sitzungsmanager') : document.body.dataset.titelStandard;
+  let logo = marke.querySelector('.marke-logo');
+  if (e.logoSeitenleiste && st.logo && st.logo.dataUrl) {
+    if (!logo) { logo = document.createElement('img'); logo.className = 'marke-logo'; marke.insertBefore(logo, marke.firstChild); }
+    logo.alt = 'Logo ' + (st.gremium || 'Betriebsrat');
+    if (logo.getAttribute('src') !== st.logo.dataUrl) logo.src = st.logo.dataUrl;
+  } else if (logo) logo.remove();
+}
+
 function renderSeitenleiste() {
   const c = document.getElementById('sitzungListe');
   const alle = daten.sitzungen || [];
@@ -1109,6 +1141,7 @@ function renderSeitenleiste() {
   const st = daten.stammdaten || {};
   const kennfeldEl = document.getElementById('markeKennfeld');
   if (kennfeldEl) kennfeldEl.textContent = [st.gremium || 'Betriebsrat', st.firma].filter(Boolean).join(' · ');
+  erscheinungAnwenden();
 
   const archivZahl = alle.filter(s => s.archiviert).length;
   const zahlEl = document.getElementById('slArchivZahl');
@@ -1605,7 +1638,7 @@ async function beschluessePdfExport(btn, rows) {
 async function erzeugeBeschlussUebersichtPdf(daten, rows, opt) {
   opt = opt || {};
   const st = daten.stammdaten;
-  const { doc, fonts, farben } = await pdfGrundlagen();
+  const { doc, fonts, farben } = await pdfGrundlagen(daten);
   const logo = await ladeLogo(doc, st);
   const b = new PdfBuilder(doc, fonts, farben,
     { links: [st.gremium || 'Betriebsrat', st.firma].filter(Boolean).join(' · '), rechts: 'Beschlussübersicht' },
@@ -1796,7 +1829,7 @@ async function aufgabenPdfExport(btn, rows) {
 async function erzeugeAufgabenUebersichtPdf(daten, rows, opt) {
   opt = opt || {};
   const st = daten.stammdaten;
-  const { doc, fonts, farben } = await pdfGrundlagen();
+  const { doc, fonts, farben } = await pdfGrundlagen(daten);
   const logo = await ladeLogo(doc, st);
   const b = new PdfBuilder(doc, fonts, farben,
     { links: [st.gremium || 'Betriebsrat', st.firma].filter(Boolean).join(' · '), rechts: 'Aufgabenübersicht' },
