@@ -1,4 +1,4 @@
-/* Hat Vorrang vor der in der App gespeicherten Liste (Bearbeiten: hier oder via Debug-Panel-Download). */
+/* Hat Vorrang vor der in der App gespeicherten Liste (Bearbeiten: hier oder via Download im Admin-Menü). */
 window.BR_PROTOKOLL_VORLAGEN = [
   { "titel": "Ordnungsgemäße Ladung", "text": "Die Ladung erfolgte form- und fristgerecht; der Betriebsrat ist beschlussfähig." },
   { "titel": "Kenntnisnahme", "text": "Der Betriebsrat nimmt die Information zur Kenntnis." },

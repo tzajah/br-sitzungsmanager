@@ -143,6 +143,8 @@ function zugangsdateiHerunterladen() {
 }
 
 function istAdmin() { return sitzungsRolle === 'admin'; }
+/* Admin-Menü: nur mit Debug-Mode-Passwort und nur im Sitzungsmanager. */
+function adminMenueVerfuegbar() { return istAdmin() && modusHatAnsicht('stammdaten'); }
 /* Viewer darf nur lesen. */
 function darfBearbeiten() { return sitzungsRolle === 'arbeit' || sitzungsRolle === 'admin'; }
 
@@ -533,7 +535,7 @@ async function projektDateiSpeichern() {
   }
 }
 
-/* Gremium-Datei: Sitzungsmanager exportiert „Gremium & Mitglieder" verschlüsselt (Installations-MK) in die Nachbardatei „Gremium"; das Protokollmodul übernimmt sie automatisch. Ohne die Datei nutzt es seinen eigenen Stand. */
+/* Gremium-Datei: Sitzungsmanager exportiert die Angaben des Admin-Menüs verschlüsselt (Installations-MK) in die Nachbardatei „Gremium"; das Protokollmodul übernimmt sie automatisch. Ohne die Datei nutzt es seinen eigenen Stand. */
 const GREMIUM_FELDER = ['stammdaten', 'personen', 'standardTops', 'kategorien',
                         'protokollVorlagen', 'beschlussVorlagen', 'urlaub', 'beschlussTags',
                         /* exportOptionen: Konvention des Gremiums, nicht des Moduls – im Protokollmodul deshalb gesperrt. */
@@ -558,7 +560,7 @@ async function gremiumDateiErzeugen() {
       '   verschlüsselt unter dem Hauptschlüssel dieser Installation (br-zugang.js).\n' +
       '   Diese Datei in den Unterordner "scripts" legen – das\n' +
       '   Protokollmodul übernimmt sie beim Öffnen automatisch.\n' +
-      '   Gepflegt wird sie ausschließlich im Sitzungsmanager unter „Gremium & Mitglieder";\n' +
+      '   Gepflegt wird sie ausschließlich im Admin-Menü des Sitzungsmanagers;\n' +
       '   nach jeder Änderung dort neu herunterladen und hier ersetzen.\n' +
       '   Erzeugt am ' + inhalt.erstelltAm + '. Nicht von Hand bearbeiten. */\n' +
       'window.BR_GREMIUM = ' + JSON.stringify({
@@ -963,7 +965,7 @@ function aktualisiereRollenUi() {
   const ra = document.getElementById('rolleAnzeige');
   if (ra) ra.textContent = rolle === 'admin' ? 'Debug-Mode' : (rolle === 'arbeit' ? 'Arbeitsmodus' : 'Nur-Lese-Ansicht');
   const sd = document.getElementById('btnStammdaten');
-  if (sd) sd.style.display = (rolle === 'admin' && modusHatAnsicht('stammdaten')) ? '' : 'none';
+  if (sd) sd.style.display = adminMenueVerfuegbar() ? '' : 'none';
   document.body.classList.toggle('rolle-viewer', !bearbeiten);
   /* Sitzungen anlegen ist zusätzlich der Sitzungsleitung vorbehalten (BR-Sitzungsmanager.html). */
   const nn = document.getElementById('btnNeueSitzung');
@@ -971,7 +973,7 @@ function aktualisiereRollenUi() {
   const po = document.getElementById('btnProjektOeffnen'); if (po) po.style.display = bearbeiten ? '' : 'none';
   /* Übernehmen schreibt Daten – Übergeben ist auch in der Nur-Lese-Ansicht erlaubt. */
   const si = document.getElementById('btnSitzungImport'); if (si) si.style.display = bearbeiten ? '' : 'none';
-  /* Übersichten, Dokumentenablage und Debug-Panel führt nur der Sitzungsmanager. */
+  /* Übersichten, Dokumentenablage und Admin-Menü führt nur der Sitzungsmanager. */
   for (const [ansicht, id] of Object.entries(NAV_KNOEPFE)) {
     const b = document.getElementById(id);
     if (b && !modusHatAnsicht(ansicht)) b.style.display = 'none';
@@ -1191,7 +1193,7 @@ function renderUrlaubAnsicht(c) {
     (!alle.length
       ? '<div class="karte"><div class="karte-koerper klein-grau">Noch keine Abwesenheiten erfasst. ' +
         'Die Mitglieder melden ihre Zeiträume mit <b>br-urlaub-melden.html</b>; die Meldungen werden unter ' +
-        '„Gremium &amp; Mitglieder" → „Urlaubskalender" eingelesen.</div></div>'
+        '„Admin-Menü" → „Urlaub" eingelesen.</div></div>'
       : '') +
 
     '<div class="karte"><div class="karte-koerper">' +
@@ -2006,14 +2008,14 @@ function renderLeerzustand(c) {
     '<h2 style="margin-bottom:8px">Tagesordnungen &amp; Protokolle für den Betriebsrat</h2>' +
     '<p class="klein-grau">Diese Anwendung läuft vollständig lokal im Browser – ohne Internetverbindung und ohne Server. ' +
     'Alle Eingaben werden automatisch in diesem Browser zwischengespeichert; für die dauerhafte Ablage sichere das Projekt als Datei (z. B. auf dem geschützten BR-Laufwerk).</p>' +
-    '<div class="schritt"><div class="nr">1</div><div><b>Gremium &amp; Mitglieder erfassen</b><br><span class="klein-grau">Name des Gremiums, Firma, Gremiumgröße nach und die Mitgliederliste – daraus entstehen später Anwesenheitsliste und Unterschriftenfelder.</span></div></div>' +
+    '<div class="schritt"><div class="nr">1</div><div><b>Gremium &amp; Mitglieder im Admin-Menü erfassen</b><br><span class="klein-grau">Name des Gremiums, Firma, Gremiumgröße nach und die Mitgliederliste – daraus entstehen später Anwesenheitsliste und Unterschriftenfelder.</span></div></div>' +
     '<div class="schritt"><div class="nr">2</div><div><b>Sitzung anlegen &amp; Tagesordnung aufstellen</b><br><span class="klein-grau">Termin, Ort und Tagesordnungspunkte (inkl. Anlagen) erfassen – die Einladung nach entsteht daraus als PDF.</span></div></div>' +
     '<div class="schritt"><div class="nr">3</div><div><b>Protokollieren &amp; als PDF exportieren</b><br><span class="klein-grau">Anwesenheit, Beschlüsse im Wortlaut und Abstimmungsergebnisse festhalten – die Niederschrift inkl. Anwesenheitsliste und Anlagen wird als PDF erzeugt.</span></div></div>' +
     '<div class="hinweis"><b>Getrennte Speicherstände:</b> Die Sitzungsleitung plant in <b>BR-Sitzungsmanager.html</b>, die Schriftführung protokolliert in <b>BR-Protokoll.html</b>. Beide Module haben eine <b>eigene</b> Ablage und kommen sich nicht in die Quere. Eine geplante Sitzung wandert über <b>„Sitzung übergeben"</b> (links unten) als verschlüsselte Datei zur Gegenseite, die sie mit <b>„Sitzung übernehmen"</b> einliest. Der Browser-Zwischenstand liegt nur auf <i>diesem</i> PC – verlässlich ist die <b>verschlüsselte Sicherungsdatei</b> („Sichern (Datei)") auf dem BR-Laufwerk.</div>' +
     '<div style="display:flex;gap:10px;margin-top:16px;flex-wrap:wrap">' +
-    (modusHatAnsicht('stammdaten') ? '<button class="btn btn-primaer btn-gross" id="lzStamm">Gremium &amp; Mitglieder erfassen</button>' : '') +
+    (adminMenueVerfuegbar() ? '<button class="btn btn-primaer btn-gross" id="lzStamm">Admin-Menü öffnen</button>' : '') +
     (APP_MODUS === 'sitzung' ? '<button class="btn btn-gross" id="lzNeu">Erste Sitzung anlegen</button>' : '') +
-    '<button class="btn btn-gross' + (modusHatAnsicht('stammdaten') ? '' : ' btn-primaer') + '" id="lzImport">' +
+    '<button class="btn btn-gross' + (adminMenueVerfuegbar() ? '' : ' btn-primaer') + '" id="lzImport">' +
       esc(UEBERGABE_TEXT[uebergabeNimmt()].nehmen) + ' …</button>' +
     '</div>' +
     (APP_MODUS === 'protokoll' ? '<p class="klein-grau" style="margin-top:12px">Sitzungen legt die Sitzungsleitung in <b>BR-Sitzungsmanager.html</b> an und übergibt sie von dort. Die Tagesordnung lässt sich anschließend auch hier bearbeiten – etwa für in der Sitzung beschlossene Änderungen.</p>' : '') +
@@ -2189,7 +2191,7 @@ function sitzungDuplizieren(quelle) {
 
 /* Reiter „Sitzung" */
 
-/* Wer ist laut urlaub.js abwesend – nur Personen aus den Stammdaten; Namen ohne Zuordnung meldet das Debug-Panel. */
+/* Wer ist laut urlaub.js abwesend – nur Personen aus den Stammdaten; Namen ohne Zuordnung meldet das Admin-Menü. */
 function urlaubHinweisHtml(datum) {
   const d = String(datum || '').slice(0, 10);
   if (!d) return '';
@@ -2212,7 +2214,7 @@ function urlaubHinweisHtml(datum) {
 function anwesenheitTabelle(el, s, beiAenderung) {
   const mitglieder = aktiveMitglieder(daten);
   if (!mitglieder.length) {
-    el.innerHTML = '<div class="hinweis warnung">Es sind noch keine Mitglieder erfasst. Bitte zuerst unter <b>„Gremium &amp; Mitglieder"</b> (links unten) die Mitgliederliste anlegen – daraus entstehen Anwesenheitsliste und Teilnahmeübersicht.</div>';
+    el.innerHTML = '<div class="hinweis warnung">Es sind noch keine Mitglieder erfasst. Bitte zuerst im <b>Admin-Menü</b> (links unten, Reiter „Personen") die Mitgliederliste anlegen – daraus entstehen Anwesenheitsliste und Teilnahmeübersicht.</div>';
     return mitglieder;
   }
   /* Wer laut urlaub.js abwesend ist und noch keinen Status hat, wird einmalig als „Entschuldigt" vorbelegt; erfasste Angaben bleiben unangetastet. */

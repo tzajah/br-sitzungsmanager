@@ -84,7 +84,10 @@ Anwesenheitsliste, Niederschrift) nach den einschlägigen Vorschriften des BetrV
 - **Aufgabenübersicht** über alle Sitzungen (aus den Protokollen erzeugt) mit
   Filter (Jahr/Zuständig/Suche) und Export als PDF und CSV.
 - **Einladung als E-Mail** (`.eml`): versandfertige Datei mit den aktiven BR-Mitgliedern
-  als Empfänger (aus deren E-Mail-Adressen) sowie der als Gast geladenen SBV und JAV;
+  als Empfänger (aus deren E-Mail-Adressen) sowie der als Gast geladenen SBV und JAV.
+  Ist im Admin-Menü ein **E-Mail-Verteiler des Gremiums** hinterlegt, ersetzt er die
+  Einzeladressen der ordentlichen Mitglieder; Ersatzmitglieder werden immer einzeln
+  eingeladen;
   der vollständige Einladungstext steht im Mailtext (kein PDF-Anhang) – öffnet in
   Outlook & anderen Clients.
 - **Dokumentenmanagement**: zentrales Panel für hochgeladene Dokumente, alle
@@ -92,23 +95,23 @@ Anwesenheitsliste, Niederschrift) nach den einschlägigen Vorschriften des BetrV
   verschlüsselt, mit Filter, Ansehen, Herunterladen und Löschen.
 - **Sitzungsliste** mit Suche, Gruppierung nach Jahr und Archivierung.
 - **Standard-Tagesordnungspunkte** aus einer externen Datei `standard-tops.js`
-  (im Ordner `scripts`), im Debug-Panel editierbar; werden beim Anlegen jeder Sitzung
+  (im Ordner `scripts`), im Admin-Menü editierbar; werden beim Anlegen jeder Sitzung
   automatisch eingefügt. Je Punkt lassen sich **Unterpunkte** hinterlegen, die dann
   als 1.1, 1.2 … mit entstehen – in der Datei über ein optionales Feld
   `"unterpunkte": [{ "titel": "…", "kategorie": "…" }]` (Kurzform `["Erster", "Zweiter"]`
   genügt auch; die Kategorie ist optional).
 - **TOP-Kategorien** (z. B. Formalia, Beratung, Beschlussfassung) aus einer externen
-  Datei `category.js` (im Ordner `scripts`), im Debug-Panel editierbar (Bezeichnung
+  Datei `category.js` (im Ordner `scripts`), im Admin-Menü editierbar (Bezeichnung
   anlegen/umbenennen/sortieren); ein interner Schlüssel bleibt stabil.
 - **Textbausteine für Protokolle** aus einer externen Datei `protokoll_vorlagen.js`
-  (im Ordner `scripts`), im Debug-Panel editierbar; im Protokoll je Tagesordnungspunkt
+  (im Ordner `scripts`), im Admin-Menü editierbar; im Protokoll je Tagesordnungspunkt
   über „+ Textblock einfügen" an der Cursorposition auswähl- und einfügbar.
 - **Textbausteine für Beschlüsse** aus einer externen Datei `beschluss_vorlagen.js`
-  (im Ordner `scripts`), im Debug-Panel unter „Beschlusstexte" editierbar; im Protokoll je
+  (im Ordner `scripts`), im Admin-Menü unter „Textbausteine" editierbar; im Protokoll je
   Beschluss über „+ Textblock einfügen" in den **Wortlaut** übernehmbar. Ausgeliefert
   werden Formulierungen zu §§ 37, 80, 87, 99 und 102 BetrVG.
-- **Urlaubs-/Abwesenheitskalender**, im Sitzungsmanager unter „Gremium & Mitglieder"
-  gepflegt: Name (mit Vorschlägen aus den Stammdaten), Zeitraum und Grund. Im Reiter
+- **Urlaubs-/Abwesenheitskalender**, im Admin-Menü des Sitzungsmanagers
+  unter „Urlaub" gepflegt: Name (mit Vorschlägen aus den Stammdaten), Zeitraum und Grund. Im Reiter
   „Sitzung" warnt die App beim gewählten Datum, wer fehlt; im Protokoll werden diese
   Mitglieder als „Entschuldigt" **vorbelegt**, solange noch kein Status erfasst ist –
   bereits erfasste Angaben bleiben unberührt. Namen ohne Zuordnung in den Stammdaten
@@ -127,7 +130,7 @@ Anwesenheitsliste, Niederschrift) nach den einschlägigen Vorschriften des BetrV
   Fortschrittsleiste, Zahl der Beschlüsse, Aufgaben und Gäste sowie ein Hinweis,
   solange eine Sitzungspause läuft – dauerhaft in der Seitenleiste sichtbar. Die
   Sprungleiste im Protokoll-Reiter zeigt je TOP, ob dort schon etwas erfasst ist.
-- **Beschluss-Tags**: farbige Schlagworte, im Debug-Panel konfigurierbar, je
+- **Beschluss-Tags**: farbige Schlagworte, im Admin-Menü konfigurierbar, je
   Beschluss zuweisbar, in der Beschluss-Übersicht filterbar und im Export.
 - **Dokument-Ordner**: das Dokumente-Panel gruppiert je Sitzung in Ordnern;
   Uploads landen im geöffneten Ordner.
@@ -145,8 +148,8 @@ Anwesenheitsliste, Niederschrift) nach den einschlägigen Vorschriften des BetrV
   `DESIGN.md`.
 - **Überarbeitete Oberfläche**: Navigationsleiste mit Aktiv-Markierung, beim
   Scrollen sichtbare Reiter, TOP-Sprungleiste und ein-/ausklappbare
-  TOP-Blöcke in Tagesordnung und Protokoll, Abschnittsnavigation im
-  Debug-Panel, Passwort-Anzeigen-Umschalter am Login, Sprungmarke für die
+  TOP-Blöcke in Tagesordnung und Protokoll, Reiter im
+  Admin-Menü, Passwort-Anzeigen-Umschalter am Login, Sprungmarke für die
   Tastaturbedienung.
 - **Bearbeiter-Dialog beim Sichern**: bei jeder Sicherung wird die speichernde
   Person erfasst (erscheint im Sicherungsvermerk).
@@ -177,11 +180,11 @@ Anwesenheitsliste, Niederschrift) nach den einschlägigen Vorschriften des BetrV
 3. `br-zugang.js` wird mit dem Werkzeug **`br-verschluesselung-generator.html`**
    erzeugt: drei Passwörter eingeben, die Datei herunterladen und nach `scripts/` legen. Dasselbe Werkzeug liefert für die
    **Erstinbetriebnahme** je einen leeren Speicherstand für den Sitzungsmanager und
-   für das Protokollmodul – ohne eine solche Datei lässt sich kein Modul öffnen. Passwörter lassen sich später im Debug-Panel
-   unter **„Zugang & Passwörter"** ändern; danach **„Zugangsdatei (br-zugang.js)
+   für das Protokollmodul – ohne eine solche Datei lässt sich kein Modul öffnen. Passwörter lassen sich später im Admin-Menü
+   unter **„Zugang & System"** ändern; danach **„Zugangsdatei (br-zugang.js)
    herunterladen"** und die Datei in den Ordner `scripts` legen – erst dann gilt das neue
    Passwort für alle.
-4. Über **„Gremium & Mitglieder"** Stammdaten und Personen (BR/SBV/JAV) erfassen.
+4. Im **Admin-Menü** (nur mit dem Debug-Mode-Passwort) Stammdaten und Personen (BR/SBV/JAV) erfassen.
 5. **Sitzung anlegen**, Tagesordnung aufstellen, protokollieren, als PDF
    exportieren.
 6. Regelmäßig über **„Sichern (Datei)"** eine verschlüsselte Sicherung auf dem
@@ -237,7 +240,7 @@ Jedes Modul hat eine **eigene Ablage**: Was die Schriftführung protokolliert, l
 nicht im Bestand der Sitzungsleitung und umgekehrt. Der Austausch läuft bewusst über
 Dateien:
 
-- **Datei `Gremium`** (Stammdaten): Alles aus „Gremium & Mitglieder" – Stammdaten,
+- **Datei `Gremium`** (Stammdaten): Alles aus dem Admin-Menü – Stammdaten,
   Personen, Kategorien, Standard-TOPs, Textbausteine, Schlagworte, Urlaubskalender –
   sowie die **Exporteinstellungen** wird im Sitzungsmanager gepflegt und dort über
   **„Gremium-Datei erzeugen"** verschlüsselt abgelegt. Die Datei liegt neben beiden
@@ -333,7 +336,7 @@ und -fassung, Niederschrift); Geheimhaltung nach § 79 BetrVG.
 | `scripts/br-app.js` | Zustand, Verschlüsselung/Persistenz, Seitenleiste, Übersichten, Reiter „Sitzung" und „Einladung" (geplante Anwesenheit) |
 | `scripts/br-tagesordnung.js` | Reiter „Tagesordnung" und Anlagen-Widget |
 | `scripts/br-protokoll.js` | Reiter „Protokoll": Anwesenheit, Verlauf, Beschlüsse, Aufgaben |
-| `scripts/br-export.js` | Export (PDF/E-Mail/Präsentation), Debug-Panel, Initialisierung (**zuletzt laden – startet die App**) |
+| `scripts/br-export.js` | Export (PDF/E-Mail/Präsentation), Admin-Menü, Initialisierung (**zuletzt laden – startet die App**) |
 | `br-design.css` | Erscheinungsbild der App (im Stammverzeichnis; ohne sie greift ein einfacher Kern-Fallback) |
 | `DESIGN.md` | Das Gestaltungssystem „Leitsystem": Farben, Schrift, Formen, Zustände, Regeln |
 | `PRODUCT.md` | Produktwahrheit: Nutzer, Zweck, Betriebsbedingungen, Barrierefreiheit |
