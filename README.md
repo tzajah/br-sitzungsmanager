@@ -83,7 +83,8 @@ Anwesenheitsliste, Niederschrift) nach den einschlägigen Vorschriften des BetrV
   („In Arbeit" / „Zugestellt").
 - **Aufgabenübersicht** über alle Sitzungen (aus den Protokollen erzeugt) mit
   Filter (Jahr/Zuständig/Suche) und Export als PDF und CSV.
-- **Einladung als E-Mail** (`.eml`): versandfertige Datei mit den aktiven BR-Mitgliedern
+- **Einladung als E-Mail** (`.eml`): versandfertige Datei im Layout der PDF-Einladung (HTML mit
+  Briefkopf, Logo und Akzentfarbe; dazu eine reine Textfassung für Programme ohne HTML) mit den aktiven BR-Mitgliedern
   als Empfänger (aus deren E-Mail-Adressen) sowie der als Gast geladenen SBV und JAV.
   Ist im Admin-Menü ein **E-Mail-Verteiler des Gremiums** hinterlegt, ersetzt er die
   Einzeladressen der ordentlichen Mitglieder; Ersatzmitglieder werden immer einzeln

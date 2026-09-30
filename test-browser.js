@@ -1984,6 +1984,73 @@ async function pruefeUnterpunktKategorieBeteiligungBeginn() {
   console.log('OK  Unterpunkt-Kategorie, Beteiligung je Beschluss, tatsächlicher Sitzungsbeginn');
 }
 
+/* Einladungs-Mail: multipart/alternative mit Text- und HTML-Teil im Layout des PDFs, Logo per Content-ID */
+function mimeTeile(roh) {
+  const kopfEnde = roh.indexOf('\r\n\r\n');
+  const kopf = roh.slice(0, kopfEnde), rumpf = roh.slice(kopfEnde + 4);
+  const grenze = (/boundary="([^"]+)"/.exec(kopf) || [])[1];
+  const typ = (/Content-Type: ([^;\r\n]+)/i.exec(kopf) || [])[1];
+  if (!grenze) {
+    const b64 = /Content-Transfer-Encoding: base64/i.test(kopf);
+    return [{ typ, kopf, inhalt: b64 ? Buffer.from(rumpf.replace(/\s+/g, ''), 'base64') : Buffer.from(rumpf) }];
+  }
+  return rumpf.split('--' + grenze).slice(1, -1).map(t => t.replace(/^\r\n/, '').replace(/\r\n$/, ''))
+    .flatMap(mimeTeile);
+}
+async function pruefeEinladungsMail() {
+  const browser = await chromium.launch();
+  const seite = await browser.newPage();
+  const fehler = [];
+  seite.on('pageerror', e => fehler.push(e.message));
+  await seite.goto(DATEI('BR-Sitzungsmanager.html'));
+  await seite.waitForFunction('typeof APP_MODUS !== "undefined"', null, { timeout: 5000 });
+  await seite.evaluate(AUFBAU);
+  const erg = await seite.evaluate(`
+    (() => {
+      const s = daten.sitzungen[0];
+      s.nr = '07/2026'; s.beginn = '14:00'; s.ort = 'Raum 3 <Nord>';
+      s.tops[0].kategorie = 'beratung'; s.tops[0].beschreibung = 'Zeile 1\\nZeile 2';
+      s.tops[0].unterpunkte = [neuerUnterpunkt({ titel: 'Teilpunkt', kategorie: 'beschluss' })];
+      daten.stammdaten.erscheinung = { akzent: '#8E1B3A' };
+      daten.stammdaten.vertraulich = true;
+      const ohneLogo = erzeugeEinladungEml(daten, s);
+      daten.stammdaten.logo = { name: 'Mein "Logo" ä.png', mime: 'image/png', size: 70,
+        dataUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=' };
+      return { ohneLogo, mitLogo: erzeugeEinladungEml(daten, s), text: einladungVolltext(daten, s),
+               dunkel: akzentPalette('#8E1B3A').dunkel };
+    })()
+  `);
+  const teile = mimeTeile(erg.mitLogo);
+  const typen = teile.map(t => t.typ);
+  assert.deepStrictEqual(typen, ['text/plain', 'text/html', 'image/png'], 'Text, HTML und Logo');
+  assert.ok(/^Content-Type: multipart\/alternative;/m.test(erg.mitLogo), 'Text und HTML als Alternativen');
+  assert.ok(/^X-Unsent: 1$/m.test(erg.mitLogo), 'öffnet in Outlook als Entwurf');
+  assert.ok(erg.mitLogo.split('\r\n').every(z => z.length <= 998), 'keine Zeile über dem SMTP-Limit');
+  assert.strictEqual(teile[0].inhalt.toString('utf8').trim(), erg.text.trim(), 'der Textteil ist die bisherige Fassung');
+  const html = teile[1].inhalt.toString('utf8');
+  for (const erwartet of ['EINLADUNG ZUR ORDENTLICHEN BETRIEBSRATSSITZUNG NR. 07/2026'.toLowerCase(), 'tagesordnung', 'hinweise', 'mit freundlichen grüßen']) {
+    assert.ok(html.toLowerCase().includes(erwartet), 'HTML enthält „' + erwartet + '"');
+  }
+  assert.ok(html.includes('Testpunkt') && html.includes('1.1&nbsp;&nbsp;Teilpunkt'), 'TOPs und Unterpunkte');
+  assert.ok(html.includes('Beratung') && html.includes('Beschlussfassung'), 'Kategorien von TOP und Unterpunkt');
+  assert.ok(html.includes('Zeile 1<br>Zeile 2'), 'Zeilenumbrüche der Erläuterung bleiben');
+  assert.ok(html.includes('Raum 3 &lt;Nord&gt;') && !html.includes('<Nord>'), 'Eingaben werden escapt');
+  assert.ok(html.includes('dashed #8E1B3A') && html.includes('color:' + erg.dunkel), 'Akzentfarbe des Gremiums');
+  assert.ok(html.includes('Vertraulich – nur für den internen Gebrauch des Gremiums'), 'Vertraulich-Vermerk wie im PDF');
+  assert.ok(html.includes('14:00 Uhr') && !html.includes('Uhr Uhr'), 'Uhrzeit ohne doppeltes „Uhr"');
+  assert.ok(!erg.text.includes('Uhr Uhr'), 'auch die Textfassung');
+  assert.ok(html.includes('src="cid:logo@br-sitzungsmanager"'), 'Logo über die Content-ID');
+  assert.ok(/Content-ID: <logo@br-sitzungsmanager>/.test(erg.mitLogo) && /filename="logo\.png"/.test(erg.mitLogo),
+    'Logo-Teil mit sicherem Dateinamen');
+  assert.ok(teile[2].inhalt.slice(1, 4).toString() === 'PNG', 'das Logo kommt unverändert an');
+  const ohne = mimeTeile(erg.ohneLogo);
+  assert.deepStrictEqual(ohne.map(t => t.typ), ['text/plain', 'text/html'], 'ohne Logo kein Bildteil');
+  assert.ok(!ohne[1].inhalt.toString('utf8').includes('cid:'), 'und kein Bildverweis');
+  assert.deepStrictEqual(fehler, [], 'keine Laufzeitfehler');
+  await browser.close();
+  console.log('OK  Einladungs-Mail: HTML im Layout des PDFs, Textfassung als Alternative, Logo eingebettet');
+}
+
 /* Admin-Menü: nur im Debug-Mode, ein Reiter je Bereich, merkt sich den zuletzt gewählten */
 async function pruefeAdminMenue() {
   const browser = await chromium.launch();
@@ -2233,6 +2300,7 @@ async function pruefeFormatgleichheit() {
   await pruefeFormatgleichheit();
   await pruefeUnterpunktKategorieBeteiligungBeginn();
   await pruefeAdminMenue();
+  await pruefeEinladungsMail();
   await pruefeAnmeldung();
   await pruefeErstinbetriebnahme();
   await pruefeVerlaufUmbrueche();

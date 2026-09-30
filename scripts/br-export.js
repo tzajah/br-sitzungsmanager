@@ -66,7 +66,7 @@ function renderTabExport(c, s) {
     '<div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">' +
       (APP_MODUS === 'sitzung'
         ? '<button class="btn btn-primaer" id="exPraesentation" title="Tagesordnung als Vollbild-Präsentation für den Beamer (öffnet in neuem Tab)">Tagesordnung als Präsentation</button>' +
-          '<button class="btn" id="exEinladungEml" title="Einladung als versandfertige E-Mail-Datei vollständiger Inhalt im Mailtext, ohne PDF-Anhang (öffnet in Outlook)">Einladung als E-Mail (.eml)</button>'
+          '<button class="btn" id="exEinladungEml" title="Einladung als versandfertige E-Mail-Datei im Layout des Einladungs-PDFs – ohne PDF-Anhang (öffnet in Outlook)">Einladung als E-Mail (.eml)</button>'
         : '<button class="btn" id="exProtokollFertig" title="Info-E-Mail an die Teilnehmenden: Protokoll liegt auf dem Laufwerk (ohne Anhang)">Protokoll fertig (E-Mail)</button>') +
       (modusHatAnsicht('dokumente') ? '<button class="btn" id="exDokordner">Dokumente dieser Sitzung öffnen</button>' : '') +
       '</div>';
@@ -126,8 +126,8 @@ function einladungVolltext(daten, s) {
   z.push('Einladung zur ' + (SITZUNGSART_GENITIV[s.art] || 'ordentlichen') + ' Betriebsratssitzung Nr. ' + s.nr);
   z.push('');
   z.push('Termin:              ' + (fmtDatum(s.datum, true) || 'noch offen'));
-  z.push('Beginn:              ' + (fmtZeit(s.beginn) ? fmtZeit(s.beginn) + ' Uhr' : '–'));
-  if (s.endeGeplant) z.push('Voraussichtl. Ende:  ' + fmtZeit(s.endeGeplant) + ' Uhr');
+  z.push('Beginn:              ' + (fmtZeit(s.beginn) || '–'));
+  if (s.endeGeplant) z.push('Voraussichtl. Ende:  ' + fmtZeit(s.endeGeplant));
   z.push('Ort / Raum:          ' + (s.ort || '–'));
   if (s.videokonferenz) z.push('Video/Telefon:       Teilnahme per Video-/Telefonkonferenz möglich.' + (s.videoHinweis ? ' ' + s.videoHinweis : ''));
   z.push('');
@@ -175,20 +175,154 @@ function einladungVolltext(daten, s) {
   z.push(sitzungsleitungRolle(daten, s));
   return z.join('\r\n');
 }
+/* Einladung als HTML-Mail im Layout des Einladungs-PDFs. Mailprogramme (vor allem Outlook) verstehen nur Tabellen und
+   Inline-Styles; deshalb kein CSS-Block und keine Flex-/Grid-Layouts. Das Logo hängt per Content-ID an (cid:), weil
+   Outlook data:-Bilder nicht anzeigt. */
+const EML_LOGO_CID = 'logo@br-sitzungsmanager';
+
+function einladungHtml(daten, s, mitLogo) {
+  const st = daten.stammdaten;
+  const p = akzentPalette(erscheinung(st).akzent);
+  const TINTE = '#0D1113', GRAU = '#5F6B72', LINIE = '#AEB5B1';
+  const SCHRIFT = 'font-family:Helvetica,Arial,sans-serif;';
+  const txt = v => esc(v == null ? '' : String(v)).replace(/\r?\n/g, '<br>');
+  const absatz = (inhalt, stil) => '<p style="margin:0 0 8px;' + SCHRIFT + 'font-size:14px;line-height:1.45;color:' + TINTE + ';' + (stil || '') + '">' + inhalt + '</p>';
+  const grau = (inhalt, stil) => absatz(inhalt, 'font-size:12px;color:' + GRAU + ';' + (stil || ''));
+  /* Doppellinie wie im PDF: schwarze Linie, darunter der gestrichelte Akzentbalken */
+  const leitlinie = '<div style="border-top:2px solid ' + TINTE + ';margin:10px 0 0;font-size:0;line-height:0">&nbsp;</div>' +
+    '<div style="border-top:3px dashed ' + p.akzent + ';margin:3px 0 18px;font-size:0;line-height:0">&nbsp;</div>';
+  const h2 = t => '<h2 style="margin:22px 0 10px;padding-bottom:5px;border-bottom:1px solid ' + LINIE + ';' + SCHRIFT +
+    'font-size:16px;color:' + TINTE + '">' + esc(t) + '</h2>';
+  const h3 = t => '<h3 style="margin:18px 0 6px;' + SCHRIFT + 'font-size:14px;color:' + TINTE + '">' + esc(t) + '</h3>';
+  const meta = (label, wert, fett) => '<tr><td style="padding:2px 12px 2px 0;width:150px;vertical-align:top;' + SCHRIFT +
+    'font-size:14px;color:' + GRAU + '">' + esc(label) + '</td><td style="padding:2px 0;vertical-align:top;' + SCHRIFT +
+    'font-size:14px;color:' + TINTE + ';' + (fett ? 'font-weight:bold;' : '') + '">' + txt(wert) + '</td></tr>';
+
+  const anlTO = anlagenTagesordnung(s);
+  const anlNrVon = a => anlTO.findIndex(e => e.a.id === a.id) + 1;
+  const anlText = liste => {
+    const nrn = (liste || []).map(anlNrVon).filter(n => n > 0);
+    return nrn.length ? (nrn.length > 1 ? 'Anlagen ' : 'Anlage ') + nrn.join(', ') : '';
+  };
+
+  const kopfUnter = [st.firma, st.ort].filter(Boolean).join('  ·  ');
+  let h = '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#F4F5F3"><tr><td align="center" style="padding:24px 12px">' +
+    '<table role="presentation" width="640" cellpadding="0" cellspacing="0" style="width:640px;max-width:100%;background:#FFFFFF;border:1px solid #D5D9D6">' +
+    '<tr><td style="padding:32px 36px">';
+
+  /* Briefkopf */
+  h += '<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>' +
+    '<td style="vertical-align:top"><div style="' + SCHRIFT + 'font-size:18px;font-weight:bold;letter-spacing:1px;color:' + TINTE + '">' +
+      esc((st.gremium || 'Betriebsrat').toUpperCase()) + '</div>' +
+      (kopfUnter ? '<div style="' + SCHRIFT + 'font-size:12px;color:' + GRAU + ';margin-top:4px">' + esc(kopfUnter) + '</div>' : '') + '</td>' +
+    (mitLogo ? '<td style="vertical-align:top;text-align:right"><img src="cid:' + EML_LOGO_CID + '" alt="Logo" height="44" style="height:44px;width:auto;border:0"></td>' : '') +
+    '</tr></table>' + leitlinie;
+
+  h += absatz(esc((st.ort ? st.ort + ', den ' : '') + fmtDatum(s.einladungDatum || heuteIso())), 'text-align:right');
+  h += absatz('An die Mitglieder des Betriebsrats', 'margin-bottom:2px');
+  if (st.nachrichtlich) h += grau('nachrichtlich: ' + esc(st.nachrichtlich) + ' (§ 29 Abs. 2 Satz 4 BetrVG)');
+
+  h += '<h1 style="margin:22px 0 0;' + SCHRIFT + 'font-size:20px;line-height:1.25;letter-spacing:1px;text-transform:uppercase;color:' + TINTE + '">' +
+    esc('Einladung zur ' + (SITZUNGSART_GENITIV[s.art] || 'ordentlichen') + ' Betriebsratssitzung Nr. ' + s.nr) + '</h1>' + leitlinie;
+
+  h += '<table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 16px">' +
+    meta('Termin:', fmtDatum(s.datum, true) || 'noch offen', true) +
+    meta('Beginn:', fmtZeit(s.beginn) || '–') +
+    (s.endeGeplant ? meta('Voraussichtl. Ende:', fmtZeit(s.endeGeplant)) : '') +
+    meta('Ort / Raum:', s.ort || '–') +
+    (s.videokonferenz ? meta('Video/Telefon:', 'Teilnahme per Video-/Telefonkonferenz möglich. ' + (s.videoHinweis || '')) : '') +
+    '</table>';
+
+  h += absatz('Liebe Kolleginnen und Kollegen,');
+  h += absatz('hiermit lade ich euch unter Mitteilung der nachfolgenden Tagesordnung zur oben genannten Sitzung des Betriebsrats ein.');
+
+  h += h2('Tagesordnung');
+  if (!(s.tops || []).length) h += grau('(Es wurden noch keine Tagesordnungspunkte erfasst.)');
+  (s.tops || []).forEach((top, i) => {
+    const teile = [kategorieText(top), top.referent ? 'Referent/in: ' + top.referent : '',
+                   top.dauer ? 'ca. ' + top.dauer + ' Min.' : '', anlText(top.anlagen)].filter(Boolean);
+    let rechts = '<div style="' + SCHRIFT + 'font-size:15px;font-weight:bold;color:' + TINTE + '">' + esc(top.titel || '(ohne Titel)') + '</div>';
+    if (teile.length) rechts += '<div style="' + SCHRIFT + 'font-size:12px;color:' + GRAU + ';margin-top:2px">' + esc(teile.join('   ·   ')) + '</div>';
+    if (top.beschreibung) rechts += '<div style="' + SCHRIFT + 'font-size:14px;color:' + TINTE + ';margin-top:4px;line-height:1.45">' + txt(top.beschreibung) + '</div>';
+    (top.unterpunkte || []).forEach((u, j) => {
+      const uTeile = [kategorieText(u), anlText(u.anlagen)].filter(Boolean);
+      rechts += '<div style="margin-top:6px;' + SCHRIFT + 'font-size:14px;color:' + TINTE + '">' + (i + 1) + '.' + (j + 1) + '&nbsp;&nbsp;' + esc(u.titel || '(ohne Titel)') + '</div>' +
+        (uTeile.length || u.beschreibung
+          ? '<div style="padding-left:16px;' + SCHRIFT + 'font-size:12px;color:' + GRAU + ';line-height:1.45">' +
+              [uTeile.length ? esc(uTeile.join('   ·   ')) : '', u.beschreibung ? txt(u.beschreibung) : ''].filter(Boolean).join('<br>') + '</div>'
+          : '');
+    });
+    h += '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 12px"><tr>' +
+      '<td style="width:64px;vertical-align:top;' + SCHRIFT + 'font-size:15px;font-weight:bold;color:' + p.dunkel + '">TOP ' + (i + 1) + '</td>' +
+      '<td style="vertical-align:top">' + rechts + '</td></tr></table>';
+  });
+
+  h += h3('Hinweise');
+  h += grau('Verhinderte Mitglieder werden gebeten, dies unverzüglich der/dem Vorsitzenden mitzuteilen, damit das jeweilige Ersatzmitglied geladen werden kann.');
+  if (s.einladungHinweis) h += grau(txt(s.einladungHinweis));
+
+  const grussName = s.sitzungsleitung || vorsitzName(daten) || '';
+  h += absatz('Mit freundlichen Grüßen', 'margin-top:18px;margin-bottom:18px');
+  if (grussName) h += absatz(esc(grussName), 'margin-bottom:0');
+  h += grau(esc(sitzungsleitungRolle(daten, s)));
+
+  if (anlTO.length) {
+    h += h2('Anlagen');
+    anlTO.forEach((e, i) => { h += absatz('Anlage ' + (i + 1) + ':&nbsp;&nbsp;' + esc((e.a.name || 'Anlage') + (e.quelle ? ' (' + e.quelle + ')' : '')), 'margin-bottom:3px'); });
+    h += grau('Die aufgeführten Anlagen sind über den BR-Sitzungsmanager einsehbar.');
+  }
+
+  /* Fußzeile wie im PDF */
+  h += '<div style="margin-top:26px;padding-top:8px;border-top:1px solid ' + LINIE + ';' + SCHRIFT + 'font-size:11px;color:' + GRAU + '">' +
+    esc('Einladung zur Betriebsratssitzung Nr. ' + s.nr + (s.datum ? ' am ' + fmtDatum(s.datum) : '')) +
+    (st.vertraulich ? '<div style="margin-top:3px;text-align:center;font-style:italic">Vertraulich – nur für den internen Gebrauch des Gremiums</div>' : '') + '</div>';
+
+  h += '</td></tr></table></td></tr></table>';
+  return '<!DOCTYPE html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">' +
+    '<title>' + esc('Einladung Nr. ' + s.nr) + '</title></head><body style="margin:0;padding:0;background:#F4F5F3">' + h + '</body></html>';
+}
+
+/* Base64 für MIME-Teile, in Zeilen zu 76 Zeichen (RFC 2045). */
+function mimeBase64(bytes) { return bytesZuBase64(bytes).replace(/.{1,76}/g, '$&\r\n').trimEnd(); }
+
 function erzeugeEinladungEml(daten, s) {
   const empf = einladungEmpfaenger(daten, s);
   const betreff = 'Einladung zur Betriebsratssitzung Nr. ' + s.nr + (s.datum ? ' am ' + fmtDatum(s.datum) : '');
-  const body = einladungVolltext(daten, s) + '\r\n';
+  const logo = daten.stammdaten.logo;
+  const logoTeile = logo && /^data:([^;,]+);base64,(.+)$/.exec(logo.dataUrl || '');
+  /* Dateiname aus dem Bildtyp – der Originalname kann Zeichen enthalten, die im Mail-Header stören. */
+  const logoDatei = logoTeile ? 'logo.' + (logoTeile[1].split('/')[1] || 'png').replace('jpeg', 'jpg') : '';
+  const utf8 = t => new TextEncoder().encode(t);
+  const grenzeAlt = '=_br_alt_' + uid(), grenzeRel = '=_br_rel_' + uid();
+
+  const textTeil = 'Content-Type: text/plain; charset="utf-8"\r\nContent-Transfer-Encoding: base64\r\n\r\n' +
+    mimeBase64(utf8(einladungVolltext(daten, s) + '\r\n'));
+  const htmlTeil = 'Content-Type: text/html; charset="utf-8"\r\nContent-Transfer-Encoding: base64\r\n\r\n' +
+    mimeBase64(utf8(einladungHtml(daten, s, !!logoTeile)));
+  const htmlMitLogo = logoTeile
+    ? 'Content-Type: multipart/related; boundary="' + grenzeRel + '"\r\n\r\n' +
+      '--' + grenzeRel + '\r\n' + htmlTeil + '\r\n' +
+      '--' + grenzeRel + '\r\n' +
+      'Content-Type: ' + logoTeile[1] + '; name="' + logoDatei + '"\r\n' +
+      'Content-Transfer-Encoding: base64\r\n' +
+      'Content-ID: <' + EML_LOGO_CID + '>\r\n' +
+      'Content-Disposition: inline; filename="' + logoDatei + '"\r\n\r\n' +
+      logoTeile[2].replace(/.{1,76}/g, '$&\r\n').trimEnd() + '\r\n' +
+      '--' + grenzeRel + '--'
+    : htmlTeil;
+
   const kopf = [
     'MIME-Version: 1.0',
     'To: ' + empf.join(', '),
     'Subject: ' + emlBetreff(betreff),
     'Date: ' + new Date().toUTCString(),
     'X-Unsent: 1',
-    'Content-Type: text/plain; charset="utf-8"',
-    'Content-Transfer-Encoding: 8bit'
+    'Content-Type: multipart/alternative; boundary="' + grenzeAlt + '"'
   ].join('\r\n');
-  return kopf + '\r\n\r\n' + body;
+  return kopf + '\r\n\r\n' +
+    '--' + grenzeAlt + '\r\n' + textTeil + '\r\n' +
+    '--' + grenzeAlt + '\r\n' + htmlMitLogo + '\r\n' +
+    '--' + grenzeAlt + '--\r\n';
 }
 async function starteEinladungEml(btn, s) {
   const alt = btn.textContent;
