@@ -1884,6 +1884,98 @@ async function pruefeVerlaufUmbrueche() {
   console.log('OK  Verlauf: Zeilenumbrüche überleben Speichern, Laden und Export');
 }
 
+/* Formatgleichheit: Die Werkzeugseiten führen eigene Kopien des Krypto-Kerns. Hier schreibt und liest die echte App
+   (sicherungVerpacken/sicherungEntpacken, zugangErzeugen) – ohne br-zugang.js, also auch in einem frischen Klon. */
+async function pruefeFormatgleichheit() {
+  const browser = await chromium.launch();
+  const ctx = await browser.newContext();
+  const fehler = [];
+  const oeffne = async datei => {
+    const s = await ctx.newPage();
+    s.on('pageerror', e => fehler.push(datei + ': ' + e.message));
+    await s.goto(DATEI(datei));
+    return s;
+  };
+
+  const app = await oeffne('BR-Sitzungsmanager.html');
+  await app.waitForFunction('typeof sicherungVerpacken === "function"', null, { timeout: 5000 });
+  const iterApp = await app.evaluate('PBKDF2_ITER');
+
+  /* App → Datei: Zugang mit der vollen Iterationszahl, genau wie im Betrieb. */
+  const sicherung = await app.evaluate(`
+    (async () => {
+      const mk = await Krypto.zufallsMk();
+      const zugang = await zugangErzeugen(mk.bytes, { admin: 'fg-admin', arbeit: 'fg-arbeit', viewer: 'fg-viewer' });
+      const nutzlast = {
+        app: 'br-sitzungsmanager', version: 1, revision: 7,
+        stammdaten: { gremium: 'Betriebsrat', firma: 'Format GmbH' },
+        personen: [{ id: 'p1', name: 'Erika Mustermann', gruppe: 'br', funktion: 'Vorsitzende/r', aktiv: true }],
+        dokumente: [{ id: 'dok1', name: 'Vorlage.pdf', kategorie: 'anlage-to', sitzungId: 's1', groesse: 2000 }],
+        dokumentInhalte: { dok1: bytesZuBase64(new Uint8Array(2000).fill(66)) },
+        sitzungen: [{ id: 's1', nr: '07/2026', datum: '2026-09-30',
+          tops: [{ id: 't1', titel: 'TOP', verlauf: '<p>Text.</p>',
+                   anlagen: [{ id: 'a1', name: 'Vorlage.pdf', dokumentId: 'dok1' }],
+                   beschluesse: [{ id: 'b1', jahr: 2026, lfd: 1, antrag: 'Wortlaut' }] }] }]
+      };
+      return JSON.stringify(await sicherungVerpacken(mk.key, zugang, nutzlast));
+    })()
+  `);
+  const liesInApp = (text, pw) => {
+    const d = JSON.parse(text);   /* diese Weiche prüfen projektDateiOeffnen()/projektBeitreten() vor dem Entpacken */
+    assert.ok(d.app === 'br-sitzungsmanager' && d.format === 'enc-v2' && d.zugang, 'Hülle im Sicherungsformat der App');
+    return app.evaluate(([t, p]) => sicherungEntpacken(JSON.parse(t), p), [text, pw]);
+  };
+
+  /* Datei → Werkzeug → Datei → App */
+  const teilen = await oeffne('br-sicherung-teilen.html');
+  await teilen.waitForFunction('!!window.WERKZEUG', null, { timeout: 5000 });
+  const geteilt = await teilen.evaluate(async t => {
+    const r = await window.WERKZEUG.aufteilen(new File([t], 'BR-Sitzungen_Rev0007.brenc.json'), 'fg-arbeit');
+    return { sm: r.sm.text, pm: r.pm.text };
+  }, sicherung);
+  const sm = await liesInApp(geteilt.sm, 'fg-viewer');
+  const pm = await liesInApp(geteilt.pm, 'fg-admin');
+  assert.strictEqual(sm.stammdaten.firma, 'Format GmbH', 'App liest die Sitzungsmanager-Datei aus „Sicherung teilen"');
+  assert.strictEqual(Object.keys(sm.dokumentInhalte).length, 1);
+  assert.strictEqual(pm.sitzungen[0].tops[0].beschluesse[0].antrag, 'Wortlaut', 'App liest die Protokoll-Datei aus „Sicherung teilen"');
+  assert.strictEqual(Object.keys(pm.dokumentInhalte || {}).length, 0);
+
+  const anlagen = await oeffne('br-anlagen-entfernen.html');
+  await anlagen.waitForFunction('!!window.WERKZEUG', null, { timeout: 5000 });
+  const bereinigt = await anlagen.evaluate(async t =>
+    (await window.WERKZEUG.anlagenAusDatei(new File([t], 'BR-Sitzungen_Rev0007.brenc.json'), 'fg-viewer')).text, sicherung);
+  const ohne = await liesInApp(bereinigt, 'fg-arbeit');
+  assert.strictEqual(ohne.revision, 7, 'App liest die Datei aus „Anlagen entfernen"');
+  assert.strictEqual(Object.keys(ohne.dokumentInhalte || {}).length, 0);
+  assert.deepStrictEqual(ohne.sitzungen[0].tops[0].anlagen.map(a => a.name), ['Vorlage.pdf']);
+
+  /* Generator → App: Startdatei und Zugang aus der Kopie, gelesen und entsperrt von der App. */
+  const gen = await oeffne('br-verschluesselung-generator.html');
+  await gen.fill('#viewer', 'gen-viewer');
+  await gen.fill('#arbeit', 'gen-arbeit');
+  await gen.fill('#admin', 'gen-admin');
+  await gen.click('#erzeugen');
+  await gen.waitForSelector('#ergebnis.an', { timeout: 60000 });
+  const stand = await gen.evaluate('standInhalt');
+  const start = await liesInApp(stand, 'gen-arbeit');
+  assert.strictEqual(start.revision, 1, 'App liest die Startdatei des Generators');
+  const rollen = await app.evaluate(async t => {
+    const z = JSON.parse(t).zugang, r = [];
+    for (const pw of ['gen-viewer', 'gen-arbeit', 'gen-admin']) r.push((await zugangEntsperren(z, pw)).rolle);
+    return r;
+  }, stand);
+  assert.deepStrictEqual(rollen, ['viewer', 'arbeit', 'admin'], 'jede Rolle aus dem Generator-Zugang entsperrt in der App');
+
+  /* iter reist im Zugang mit – eine abweichende Konstante fiele sonst beim Laden nicht auf. */
+  for (const [seite, name] of [[teilen, 'teilen'], [anlagen, 'anlagen'], [gen, 'generator']]) {
+    assert.strictEqual(await seite.evaluate('PBKDF2_ITER'), iterApp, name + ': PBKDF2_ITER wie in br-app.js');
+  }
+
+  assert.deepStrictEqual(fehler, [], 'keine Laufzeitfehler');
+  await browser.close();
+  console.log('OK  Formatgleichheit: App ↔ Sicherung teilen, Anlagen entfernen, Generator');
+}
+
 (async () => {
   await pruefe('BR-Sitzungsmanager.html', 'sitzung');
   await pruefe('BR-Protokoll.html', 'protokoll');
@@ -1897,6 +1989,7 @@ async function pruefeVerlaufUmbrueche() {
   await pruefeGremium();
   await pruefeUmwandler();
   await pruefeAufraeumen();
+  await pruefeFormatgleichheit();
   await pruefeAnmeldung();
   await pruefeErstinbetriebnahme();
   await pruefeVerlaufUmbrueche();

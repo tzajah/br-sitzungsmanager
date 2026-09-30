@@ -21,7 +21,10 @@ Gremium
 
 # Erzeugtes
 br-sitzungsmanager*.zip
+
+# graphify (lokaler Wissensgraph zur Code-Navigation)
 graphify-out/
+.graphifyignore
 
 # Die Anwendung selbst braucht kein npm – Node wird nur fuer die Tests benoetigt.
 # Das Repo bleibt deshalb manifestfrei; siehe README, Abschnitt „Tests".

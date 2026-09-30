@@ -82,7 +82,7 @@
     </div>
   </div>
 
-  <p class="fuss">Hinweis: Als reine Browser-Anwendung ist die Prüfung der Cryptodatei technisch
+  <p class="fuss">Hinweis: Als reine Browser-Anwendung ist die Sperre ohne <code>br-zugang.js</code> technisch
     umgehbar; sie verhindert beiläufige Weitergabe, schützt aber nicht die Daten. Die schützen
     allein die Passwörter.</p>
 </div>
@@ -90,7 +90,7 @@
 <script>
 'use strict';
 /* =====================================================================
-   Krypto-Kern – bewusst als eigenständige Kopie aus BR-Sitzungsmanager.html.
+   Krypto-Kern – bewusst als eigenständige Kopie aus scripts/br-app.js.
    Diese Konstanten und Funktionen MÜSSEN mit der App synchron bleiben, sonst
    lassen sich die erzeugten Dateien dort nicht entschlüsseln:
      - PBKDF2_ITER (Iterationen)   - Zugang-Format v:2
@@ -148,7 +148,7 @@ function zugangDateiInhalt(z) {
     '/* br-zugang.js – Zugang (Passwoerter) fuer den BR-Sitzungsmanager.\n' +
     '   Enthaelt den unter den Rollen-Passwoertern (Viewer/Arbeit/Debug-Mode) VERSCHLUESSELTEN\n' +
     '   Hauptschluessel – die Passwoerter selbst stehen NICHT im Klartext hier.\n' +
-    '   Diese Datei neben BR-Sitzungsmanager.html ablegen; sie ist massgeblich.\n' +
+    '   Diese Datei in den Unterordner "scripts" legen; sie ist massgeblich.\n' +
     '   Erzeugt am ' + new Date().toISOString() + '. */\n';
   return kopf + 'window.BR_ZUGANG = ' + JSON.stringify(z, null, 2) + ';\n';
 }

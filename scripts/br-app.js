@@ -482,6 +482,20 @@ function setAutosaveInfo(text, fehler) {
 }
 
 /* Verschlüsselte, selbsttragende Sicherungsdatei (eigenes Salt, mit Passwort auf jedem Rechner wiederherstellbar). */
+/* Hülle einer vollständigen Sicherung (enc-v2). Die Werkzeugseiten lesen und schreiben dasselbe Format mit eigenen Kopien des Krypto-Kerns; test-browser.js (pruefeFormatgleichheit) hält beide Seiten zusammen. */
+async function sicherungVerpacken(mk, zugang, nutzlast) {
+  const { iv, ct } = await Krypto.chiffriere(mk, nutzlast);
+  return {
+    app: 'br-sitzungsmanager', format: 'enc-v2',
+    zugang: zugang,                                  /* Viewer-/Arbeits-/Admin-Zugang reist mit */
+    iv: Array.from(iv), ct: bytesZuBase64(new Uint8Array(ct))
+  };
+}
+async function sicherungEntpacken(d, passwort) {
+  const auf = await zugangEntsperren(d.zugang, passwort);
+  return Krypto.dechiffriere(auf.mk, new Uint8Array(d.iv), base64ZuBytes(d.ct).buffer);
+}
+
 async function projektDateiSpeichern() {
   if (!sitzungsSchluessel) return;
   try {
@@ -503,12 +517,7 @@ async function projektDateiSpeichern() {
       beschlussTags: daten.beschlussTags,
       sitzungen: daten.sitzungen, exportOptionen: daten.exportOptionen
     };
-    const { iv, ct } = await Krypto.chiffriere(sitzungsSchluessel, gesamt);
-    const datei = {
-      app: 'br-sitzungsmanager', format: 'enc-v2',
-      zugang: aktuellesZugang,                         /* Viewer-/Arbeits-/Admin-Zugang reist mit */
-      iv: Array.from(iv), ct: bytesZuBase64(new Uint8Array(ct))
-    };
+    const datei = await sicherungVerpacken(sitzungsSchluessel, aktuellesZugang, gesamt);
     const zeitTag = jetzt.slice(0, 10), zeitUhr = jetzt.slice(11, 16).replace(':', '');
     const name = 'BR-Sitzungen' + (daten.stammdaten.firma ? '_' + daten.stammdaten.firma.replace(/[^\wäöüÄÖÜß-]+/g, '-') : '') +
       '_Rev' + String(revision).padStart(4, '0') + '_' + zeitTag + '_' + zeitUhr + '.brenc.json';
@@ -547,7 +556,7 @@ async function gremiumDateiErzeugen() {
     const { iv, ct } = await Krypto.chiffriere(sitzungsSchluessel, inhalt);
     const js =
       '/* Gremium – Stammdaten, Personen, Kategorien und Textbausteine des Betriebsrats,\n' +
-      '   verschlüsselt unter dem Hauptschlüssel dieser Installation (br-zugang.js/key).\n' +
+      '   verschlüsselt unter dem Hauptschlüssel dieser Installation (br-zugang.js).\n' +
       '   Diese Datei in den Unterordner "scripts" legen – das\n' +
       '   Protokollmodul übernimmt sie beim Öffnen automatisch.\n' +
       '   Gepflegt wird sie ausschließlich im Sitzungsmanager unter „Gremium & Mitglieder";\n' +
@@ -573,7 +582,7 @@ async function externesGremiumUebernehmen() {
   try {
     inhalt = await Krypto.dechiffriere(sitzungsSchluessel, new Uint8Array(g.iv), base64ZuBytes(g.ct).buffer);
   } catch (e) {
-    /* Andere Installation (fremde br-zugang.js/key) – nicht entschlüsselbar. */
+    /* Andere Installation (fremde br-zugang.js) – nicht entschlüsselbar. */
     console.warn('Die Datei „Gremium" passt nicht zu dieser Installation:', e);
     zeigeToast('Die Datei „Gremium" passt nicht zu dieser Installation und wurde übersprungen.', 'fehler');
     return false;
@@ -779,9 +788,8 @@ async function projektDateiOeffnen(datei) {
       if (!d.zugang) return zeigeToast('Sicherung ohne Zugang – bitte eine aktuelle Sicherung verwenden.', 'fehler');
       const passwort = await passwortAbfrage('Sicherung entschlüsseln', 'Bitte Ihr Passwort (Arbeitsmodus oder Debug-Mode) eingeben.');
       if (passwort == null) return;
-      const auf = await zugangEntsperren(d.zugang, passwort);
-      projekt = await Krypto.dechiffriere(auf.mk, new Uint8Array(d.iv), base64ZuBytes(d.ct).buffer);
-      /* Installation (br-zugang.js/key) bleibt maßgeblich: der Schlüssel der Sicherung dient nur zum Entschlüsseln, gespeichert wird unter dem aktuellen Installations-MK. */
+      projekt = await sicherungEntpacken(d, passwort);
+      /* Installation (br-zugang.js) bleibt maßgeblich: der Schlüssel der Sicherung dient nur zum Entschlüsseln, gespeichert wird unter dem aktuellen Installations-MK. */
     } else if (d && d.format === 'enc-v1') {
       const passwort = await passwortAbfrage('Sicherung entschlüsseln', 'Bitte das Passwort dieser Sicherungsdatei eingeben.');
       if (passwort == null) return;
@@ -817,7 +825,7 @@ async function projektDateiOeffnen(datei) {
 }
 
 async function projektUebernehmen(projekt) {
-  /* Installation (br-zugang.js/key) bleibt maßgeblich: gespeichert wird unter dem aktuellen Installations-MK, Zugang/Rolle der Anmeldung bleiben unverändert. */
+  /* Installation (br-zugang.js) bleibt maßgeblich: gespeichert wird unter dem aktuellen Installations-MK, Zugang/Rolle der Anmeldung bleiben unverändert. */
   daten = migriere(projekt);
   ui.sitzungId = daten.sitzungen[0] ? daten.sitzungen[0].id : null;
   ui.tab = modusStartReiter();   /* im Protokoll-Modus gibt es keinen Reiter „Sitzung" */
@@ -927,13 +935,12 @@ async function projektBeitreten(datei) {
   const passwort = await passwortAbfrage('Sicherung öffnen', 'Bitte Ihr Passwort (Arbeitsmodus oder Debug-Mode) eingeben.');
   if (passwort == null) return;
   try {
-    /* Installation (br-zugang.js/key) ist maßgeblich: erst lokalen Zugang entsperren, dann unter diesem Installations-MK speichern (unabhängig vom MK der Sicherung). */
+    /* Installation (br-zugang.js) ist maßgeblich: erst lokalen Zugang entsperren, dann unter diesem Installations-MK speichern (unabhängig vom MK der Sicherung). */
     const zugang = externerZugang();
     let inst;
     try { inst = await zugangEntsperren(zugang, passwort); }
     catch (e) { return zeigeToast('Falsches Passwort für die lokale br-zugang.js.', 'fehler'); }
-    const auf = await zugangEntsperren(d.zugang, passwort);
-    const projekt = await Krypto.dechiffriere(auf.mk, new Uint8Array(d.iv), base64ZuBytes(d.ct).buffer);
+    const projekt = await sicherungEntpacken(d, passwort);
     sitzungsSchluessel = inst.mk; sitzungsMkBytes = inst.mkBytes;
     sitzungsRolle = inst.rolle; ui.rolle = inst.rolle;
     aktuellesZugang = zugang;
@@ -999,7 +1006,7 @@ function zeigeSperrschirm(modus, kontext) {
         '<h2>Anwendung gesperrt</h2>' +
         '<div class="ueberzeile">BR-Sitzungsmanager</div>' +
         '<p>' + (kontext || 'Die Anwendung ist gesperrt.') + '</p>' +
-        '<p class="klein-grau">Bitte legen Sie eine gültige <code>br-zugang.js</code> in denselben Ordner wie <code>BR-Sitzungsmanager.html</code> und laden Sie die Seite neu.</p>' +
+        '<p class="klein-grau">Bitte legen Sie eine gültige <code>br-zugang.js</code> in den Unterordner <code>scripts</code> und laden Sie die Seite neu.</p>' +
       '</div>';
 
   } else {

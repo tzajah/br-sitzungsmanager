@@ -16,7 +16,7 @@
    Beispieleinträge unten durch die echten Zeiträume ersetzen.
 
    Datenschutz: Mit echten Namen enthält diese Datei personenbezogene Daten – wie
-   br-zugang.js/key nur auf das geschützte BR-Laufwerk, nicht in die Versionsverwaltung. */
+   br-zugang.js nur auf das geschützte BR-Laufwerk, nicht in die Versionsverwaltung. */
 window.BR_URLAUB = [
   { "name": "Erika Mustermann", "von": "2026-08-10", "bis": "2026-08-28", "grund": "Urlaub" },
   { "name": "Max Mustermann",   "von": "2026-09-07", "bis": "2026-09-11", "grund": "Fortbildung" },
