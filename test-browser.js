@@ -2118,6 +2118,8 @@ async function pruefeAdminMenue() {
         { id: 'x1', name: 'Ausgeschieden', gruppe: 'br', funktion: 'Ersatzmitglied', aktiv: false, email: 'alt@firma.de' }
       ];
       const s = daten.sitzungen[0];
+      const offen = einladungEmpfaenger(daten, s);
+      s.teilnahme.e1 = { status: 'anwesend', vertretenDurch: '' };
       const ohne = einladungEmpfaenger(daten, s);
       const dlg = document.getElementById('dlgStammdaten');
       oeffneStammdaten();
@@ -2128,10 +2130,16 @@ async function pruefeAdminMenue() {
       dlg.close();
       const mit = einladungEmpfaenger(daten, s);
       const to = erzeugeEinladungEml(daten, s).split(String.fromCharCode(13, 10)).find(z => z.startsWith('To: '));
-      return { ohne, mit, to, gespeichert: daten.stammdaten.verteiler };
+      daten.personen.push({ id: 'e2', name: 'Ersatz Zwei', gruppe: 'br', funktion: 'Ersatzmitglied', aktiv: true, email: 'vertretung@firma.de' });
+      s.teilnahme = { o2: { status: 'entschuldigt', vertretenDurch: '  ersatz zwei ' } };
+      const vertretung = einladungEmpfaenger(daten, s);
+      return { offen, ohne, mit, to, vertretung, gespeichert: daten.stammdaten.verteiler };
     })()
   `);
-  assert.deepStrictEqual(mail.ohne, ['eins@firma.de', 'zwei@firma.de', 'ersatz@firma.de'], 'ohne Verteiler: alle aktiven einzeln');
+  assert.deepStrictEqual(mail.offen, ['eins@firma.de', 'zwei@firma.de'], 'Ersatzmitglied mit Status „offen" wird nicht eingeladen');
+  assert.deepStrictEqual(mail.ohne, ['eins@firma.de', 'zwei@firma.de', 'ersatz@firma.de'], 'ohne Verteiler: alle aktiven einzeln, das geladene Ersatzmitglied dazu');
+  assert.deepStrictEqual(mail.vertretung, ['br-verteiler@firma.de', 'vertretung@firma.de'],
+    'ein unter „Vertreten durch" genanntes Ersatzmitglied ist geladen, auch ohne eigenen Status');
   assert.strictEqual(mail.gespeichert, 'br-verteiler@firma.de', 'der Verteiler wird im Admin-Menü gespeichert');
   assert.deepStrictEqual(mail.mit, ['br-verteiler@firma.de', 'ersatz@firma.de'],
     'mit Verteiler: der Verteiler statt der ordentlichen Mitglieder, Ersatzmitglieder weiter einzeln');
