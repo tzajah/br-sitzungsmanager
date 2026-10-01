@@ -8,6 +8,16 @@ veröffentlichten Releases).
 ## [Unreleased]
 
 ### Behoben
+- **Die Einladungs-Mail lud alle Ersatzmitglieder ein.** Jetzt nur noch die, die für diese
+  Sitzung geladen sind: in der geplanten Anwesenheit (Reiter „Einladung“) als anwesend oder
+  per Video eingetragen oder bei einem verhinderten Mitglied unter „Vertreten durch“ genannt.
+  Ersatzmitglieder mit Status „offen“ bekommen keine Einladung. Für ordentliche Mitglieder
+  ändert sich nichts.
+- **Unterpunkt-Titel im Standard-TOP-Editor stark eingerückt.** Seit die Unterpunkte dort
+  eine Kategorie haben, rutschte die Nummer in die breite Titelspalte; Titel und Kategorie
+  standen gequetscht rechts daneben. Die Unterpunkt-Zeile hat jetzt ein eigenes Raster
+  (Nummer · Titel · Kategorie · Werkzeuge). Außerdem nimmt der Titel eines Unterpunkts im
+  Reiter „Tagesordnung“ jetzt die volle Breite ein, statt nach wenigen Zeichen abzuschneiden.
 - **„14:00 Uhr Uhr“ in der Einladungs-Mail.** Beginn und voraussichtliches Ende trugen das
   „Uhr“ doppelt, weil die Zeitformatierung es bereits anhängt.
 

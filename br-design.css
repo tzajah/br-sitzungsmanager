@@ -354,6 +354,12 @@ input.eingabe,select.eingabe,textarea.eingabe{
 .top-kopf .top-titel-eingabe:hover{border-color:var(--linie-stark);background:#fff}
 .top-kopf .top-titel-eingabe:focus{background:#fff;border-color:var(--akzent);outline:none;
   box-shadow:inset 0 0 0 1px var(--akzent)}
+/* Unterpunkt-Titel: nimmt wie der TOP-Titel die volle Breite neben der Nummer ein */
+.up-kopf .top-titel-eingabe{flex:1;min-width:160px}
+/* Unterpunkt im Standard-TOP-Editor: Nummer | Titel | Kategorie | Werkzeuge – eigenes Raster statt des
+   vierspaltigen der TOP-Zeile, sonst landet die Nummer in der breiten Titelspalte */
+.mitglied-zeile.std-unter{grid-template-columns:34px 1fr 190px 108px}
+@media(max-width:760px){.mitglied-zeile.std-unter{grid-template-columns:34px 1fr 74px}}
 .top-werkzeuge{display:flex;gap:var(--takt);flex:none;align-items:center}
 .top-badges{display:inline-flex;gap:calc(var(--takt) * 1.5);flex:none}
 .top-badge{font-family:var(--schrift-kennfeld);font-size:11px;font-weight:700;letter-spacing:.06em;

@@ -94,15 +94,25 @@ function renderTabExport(c, s) {
 
 /* Empfänger: aktive BR-Mitglieder + als Gast erfasste SBV/JAV-Personen (Gäste selbst haben keine E-Mail). */
 /* Ordentliche Mitglieder über den Verteiler, falls hinterlegt – sonst einzeln. Ersatzmitglieder stehen nicht im
-   Verteiler und werden deshalb immer über ihre eigene Adresse eingeladen. */
+   Verteiler und werden über ihre eigene Adresse eingeladen – aber nur, wenn sie für diese Sitzung geladen sind:
+   in der geplanten Anwesenheit als anwesend/Video eingetragen oder bei einem verhinderten Mitglied unter
+   „Vertreten durch" genannt. Mit Status „offen" nehmen sie nicht teil und bekommen keine Einladung. */
+function ersatzmitgliedGeladen(s, p) {
+  const status = teilnahmeVon(s || {}, p.id).status;
+  if (status === 'anwesend' || status === 'video') return true;
+  const name = (p.name || '').trim().toLowerCase();
+  return !!name && Object.values((s && s.teilnahme) || {})
+    .some(t => t && t.status === 'entschuldigt' && (t.vertretenDurch || '').trim().toLowerCase() === name);
+}
 function einladungEmpfaenger(daten, s) {
   const map = new Map();
   const add = email => { const e = (email || '').trim(); if (e) map.set(e.toLowerCase(), e); };
   const verteiler = ((daten.stammdaten || {}).verteiler || '').trim();
   add(verteiler);
-  personenDerGruppe(daten, 'br').filter(p => p.aktiv !== false)
-    .filter(p => !verteiler || p.funktion === 'Ersatzmitglied')
-    .forEach(p => add(p.email));
+  personenDerGruppe(daten, 'br').filter(p => p.aktiv !== false).forEach(p => {
+    if (p.funktion === 'Ersatzmitglied') { if (ersatzmitgliedGeladen(s, p)) add(p.email); }
+    else if (!verteiler) add(p.email);
+  });
   const gastNamen = new Set(((s || {}).gaeste || []).map(g => (g.name || '').trim().toLowerCase()).filter(Boolean));
   for (const gruppe of ['sbv', 'jav']) {
     for (const p of aktivePersonen(daten, gruppe)) {
@@ -947,7 +957,7 @@ function oeffneStammdaten() {
       '</div>' +
       '<div data-unter style="margin:4px 0 0 26px;border-left:2px solid var(--linie,#DCE1DF);padding-left:10px">' +
         (t.unterpunkte || []).map((u, j) =>
-          '<div class="mitglied-zeile" data-u="' + j + '" style="margin-top:4px">' +
+          '<div class="mitglied-zeile std-unter" data-u="' + j + '" style="margin-top:4px">' +
           '<span class="klein-grau" style="min-width:34px">' + (i + 1) + '.' + (j + 1) + '</span>' +
           '<input data-f="utitel" class="eingabe" placeholder="Titel des Unterpunkts">' +
           '<select data-f="ukategorie" class="eingabe" aria-label="Kategorie des Unterpunkts">' + kategorieOptionenHtml() + '</select>' +
