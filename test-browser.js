@@ -2328,6 +2328,75 @@ async function pruefeFormatgleichheit() {
   console.log('OK  Formatgleichheit: App ↔ Sicherung teilen, Anlagen entfernen, Generator');
 }
 
+/* Inhaltsverzeichnis im Reiter „Protokoll": im linken Rand, scrollt mit, springt (auch in zugeklappte TOPs), markiert die Stelle */
+async function pruefeProtokollInhalt() {
+  const browser = await chromium.launch();
+  const seite = await browser.newPage({ viewport: { width: 1600, height: 800 } });
+  const fehler = [];
+  seite.on('pageerror', e => fehler.push(e.message));
+  await seite.goto(DATEI('BR-Protokoll.html'));
+  await seite.waitForFunction('typeof APP_MODUS !== "undefined"', null, { timeout: 5000 });
+  await seite.evaluate(AUFBAU);
+  const erg = await seite.evaluate(`
+    (async () => {
+      const s = daten.sitzungen[0];
+      for (let i = 2; i <= 5; i++) s.tops.push(neuerTop({ titel: 'Punkt ' + i }));
+      s.tops[3].unterpunkte = [neuerUnterpunkt({ titel: 'Teilfrage' })];
+      ui.zugeklappt.add(klappSchluessel(s.tops[3]));
+      ui.tab = 'protokoll'; renderHaupt();
+      const toc = document.querySelector('.prot-toc');
+      const eintraege = Array.from(toc.querySelectorAll('[data-toc]')).map(e => e.textContent);
+      const tocRechts = toc.getBoundingClientRect().right;
+      const inhaltLinks = document.getElementById('hauptInhalt').getBoundingClientRect().left;
+      const chips = getComputedStyle(document.querySelector('.top-sprung')).display;
+      toc.querySelector('[data-toc="up-3-0"]').click();
+      await new Promise(r => setTimeout(r, 900));
+      const ziel = document.querySelector('[data-tocanker="up-3-0"]');
+      return { eintraege, tocRechts, inhaltLinks, chips, scrollY: window.scrollY,
+        zielOben: ziel.getBoundingClientRect().top,
+        aufgeklappt: !document.querySelector('[data-tocanker="top-3"]').classList.contains('zu'),
+        aktiv: toc.querySelector('.toc-e.aktiv').dataset.toc,
+        tocOben: toc.getBoundingClientRect().top };
+    })()
+  `);
+  assert.deepStrictEqual(erg.eintraege, ['Anwesenheit & Beschlussfähigkeit', 'Protokoll je TOP', 'TOP 1Testpunkt', 'TOP 2Punkt 2',
+    'TOP 3Punkt 3', 'TOP 4Punkt 4', '4.1Teilfrage', 'TOP 5Punkt 5', 'Anlagen zum Protokoll'], 'Gliederung wie in Word: Abschnitte, TOPs, Unterpunkte');
+  assert.ok(erg.tocRechts <= erg.inhaltLinks, 'das Verzeichnis steht im freien Rand, nicht über dem Protokoll');
+  assert.strictEqual(erg.chips, 'none', 'die TOP-Chips entfallen neben dem Verzeichnis');
+  assert.ok(erg.aufgeklappt, 'ein zugeklappter TOP klappt beim Sprung auf seinen Unterpunkt auf');
+  assert.ok(erg.scrollY > 0 && erg.zielOben >= 0 && erg.zielOben < 120, 'der Unterpunkt steht oben unter der Reiterleiste: ' + erg.zielOben);
+  assert.strictEqual(erg.aktiv, 'up-3-0', 'die aktuelle Stelle ist markiert');
+  assert.ok(erg.tocOben >= 0 && erg.tocOben < 40, 'das Verzeichnis scrollt mit');
+  const klapp = await seite.evaluate(`(() => {
+    const toc = document.querySelector('.prot-toc'), knopf = toc.querySelector('.toc-klapp');
+    const breitOffen = toc.getBoundingClientRect().width;
+    knopf.click();
+    const zu = { klasse: toc.classList.contains('zu'), aria: knopf.getAttribute('aria-expanded'), breite: toc.getBoundingClientRect().width,
+      liste: getComputedStyle(document.getElementById('tocListe')).display, chips: getComputedStyle(document.querySelector('.top-sprung')).display,
+      tocRechts: toc.getBoundingClientRect().right, inhaltLinks: document.getElementById('hauptInhalt').getBoundingClientRect().left };
+    renderHaupt();
+    const nachRender = document.querySelector('.prot-toc').classList.contains('zu');
+    document.querySelector('.prot-toc .toc-klapp').click();
+    return { breitOffen, zu, nachRender, wiederOffen: !document.querySelector('.prot-toc').classList.contains('zu') };
+  })()`);
+  assert.ok(klapp.zu.klasse && klapp.zu.aria === 'false' && klapp.zu.liste === 'none', 'das Verzeichnis klappt ein');
+  assert.ok(klapp.zu.breite < 60 && klapp.breitOffen > 200, 'eingeklappt bleibt nur eine schmale Leiste: ' + klapp.zu.breite);
+  assert.ok(klapp.zu.tocRechts <= klapp.zu.inhaltLinks, 'auch eingeklappt nicht über dem Protokoll');
+  assert.notStrictEqual(klapp.zu.chips, 'none', 'eingeklappt sind die TOP-Chips wieder da');
+  assert.ok(klapp.nachRender, 'der Zustand bleibt beim Neuaufbau erhalten');
+  assert.ok(klapp.wiederOffen, 'und lässt sich wieder aufklappen');
+  if (process.env.BR_SCREENSHOTS) await seite.addStyleTag({ content: '.sperrschirm{display:none !important}' }).then(() => seite.screenshot({ path: path.join(process.env.BR_SCREENSHOTS, 'protokoll-inhalt.png') }));
+
+  await seite.setViewportSize({ width: 1000, height: 800 });
+  const schmal = await seite.evaluate(`({ toc: getComputedStyle(document.querySelector('.prot-toc')).display,
+    chips: getComputedStyle(document.querySelector('.top-sprung')).display })`);
+  assert.strictEqual(schmal.toc, 'none', 'auf schmalen Bildschirmen kein Verzeichnis');
+  assert.notStrictEqual(schmal.chips, 'none', 'dort bleibt die TOP-Sprungleiste');
+  assert.deepStrictEqual(fehler, [], 'keine Laufzeitfehler');
+  await browser.close();
+  console.log('OK  Protokoll: Inhaltsverzeichnis im Rand, springt, markiert die Stelle, scrollt mit');
+}
+
 (async () => {
   await pruefe('BR-Sitzungsmanager.html', 'sitzung');
   await pruefe('BR-Protokoll.html', 'protokoll');
@@ -2348,5 +2417,6 @@ async function pruefeFormatgleichheit() {
   await pruefeAnmeldung();
   await pruefeErstinbetriebnahme();
   await pruefeVerlaufUmbrueche();
+  await pruefeProtokollInhalt();
   console.log('\nAlle Browser-Prüfungen bestanden.');
 })().catch(e => { console.error(e); process.exit(1); });

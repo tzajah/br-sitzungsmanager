@@ -39,6 +39,15 @@ veröffentlichten Releases).
   erzeugen“ und „Fertig“.
 
 ### Hinzugefügt
+- **Inhaltsverzeichnis im Reiter „Protokoll“** – wie der Navigationsbereich in Word. Es steht im
+  freien Rand zwischen Seitenleiste und Protokoll und scrollt mit: Anwesenheit & Beschluss-
+  fähigkeit, alle TOPs mit Stand-Punkt und ihren Unterpunkten, Anlagen. Ein Klick springt an die
+  Stelle, ein zugeklappter TOP klappt dafür auf; der Abschnitt, in dem man gerade steht, ist
+  markiert. Ab 1280 px Fensterbreite (ist der Rand schmaler, rückt das Protokoll etwas nach rechts);
+  die TOP-Sprungleiste entfällt dann, auf schmaleren Bildschirmen bleibt sie wie bisher.
+  Über den Pfeil-Knopf im Kopf klappt das Verzeichnis zu einer schmalen Leiste ein; das Protokoll
+  steht dann wieder mittig, und die TOP-Sprungleiste ist zurück. Der Zustand bleibt erhalten,
+  solange die App geöffnet ist.
 - **Die Einladungs-Mail (`.eml`) sieht aus wie die PDF-Einladung.** Bisher war sie reiner
   Text; jetzt ist sie eine HTML-Mail im selben Aufbau: Briefkopf mit Gremium, Firma, Ort und
   Logo, die Doppellinie in der Akzentfarbe, Datumszeile, Titel, Rahmendaten, Tagesordnung mit
