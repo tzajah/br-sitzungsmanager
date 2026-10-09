@@ -137,7 +137,7 @@ Anwesenheitsliste, Niederschrift) nach den einschlägigen Vorschriften des BetrV
   freien Rand links neben dem Protokoll und scrollt mit. Es gliedert in Anwesenheit, TOPs mit
   Unterpunkten und Anlagen, springt per Klick an die Stelle (klappt einen zugeklappten TOP dafür
   auf) und markiert, wo man gerade steht. Per Pfeil-Knopf lässt es sich zu einer schmalen Leiste
-  einklappen. Ab 1280 px Fensterbreite; darunter bleibt die Sprungleiste.
+  einklappen (bleibt im Browser gemerkt). Ab 1280 px Fensterbreite; darunter bleibt die Sprungleiste.
 - **Eigenes Erscheinungsbild** je Gremium (Admin-Menü → „Erscheinungsbild“): Akzentfarbe
   für App, PDFs und Präsentation (Varianten werden abgeleitet, der Kontrast bleibt gewahrt),
   Name und Untertitel der Anwendung sowie das Logo in der Seitenleiste.

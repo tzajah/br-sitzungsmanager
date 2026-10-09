@@ -72,10 +72,11 @@ function protTocHtml(s) {
     const f = protokollFortschritt({ tops: [t] });
     return '<span class="ts-punkt' + (f.erledigt === f.punkte ? ' voll' : f.erledigt ? ' teil' : '') + '"></span>';
   };
-  /* Einklappbar zu einer schmalen Leiste; der Zustand gilt für die Sitzung im Browser (ui.tocZu), wie bei den TOP-Blöcken. */
-  return '<nav class="prot-toc' + (ui.tocZu ? ' zu' : '') + '" aria-label="Inhalt des Protokolls"><div class="toc-kopf"><span>Inhalt</span>' +
-    '<button type="button" class="btn btn-symbol btn-geist toc-klapp" aria-expanded="' + !ui.tocZu + '" aria-controls="tocListe" ' +
-    'title="' + (ui.tocZu ? 'Inhaltsverzeichnis einblenden' : 'Inhaltsverzeichnis einklappen') + '"><svg class="ic"><use href="#ic-chevron"/></svg></button></div>' +
+  /* Einklappbar zu einer schmalen Leiste; der Zustand wird geräte-lokal gemerkt (tocZu). */
+  const zu = tocZu();
+  return '<nav class="prot-toc' + (zu ? ' zu' : '') + '" aria-label="Inhalt des Protokolls"><div class="toc-kopf"><span>Inhalt</span>' +
+    '<button type="button" class="btn btn-symbol btn-geist toc-klapp" aria-expanded="' + !zu + '" aria-controls="tocListe" ' +
+    'title="' + (zu ? 'Inhaltsverzeichnis einblenden' : 'Inhaltsverzeichnis einklappen') + '"><svg class="ic"><use href="#ic-chevron"/></svg></button></div>' +
     '<div id="tocListe">' +
     eintrag('anwesenheit', 'Anwesenheit & Beschlussfähigkeit', 1) +
     eintrag('tops', 'Protokoll je TOP', 1) +
@@ -84,12 +85,19 @@ function protTocHtml(s) {
     eintrag('anlagen', 'Anlagen zum Protokoll', 1) +
     '</div></nav>';
 }
+/* Einklapp-Zustand des Inhaltsverzeichnisses – geräte-lokal gemerkt wie bearbeiterName (nicht vertraulich). */
+function tocZu(wert) {
+  try {
+    if (wert !== undefined) { localStorage.setItem('br-sitzungsmanager.tocZu', wert ? '1' : ''); return wert; }
+    return localStorage.getItem('br-sitzungsmanager.tocZu') === '1';
+  } catch (e) { return !!wert; }
+}
 function protTocVerdrahten(c) {
   const toc = c.querySelector('.prot-toc'), klapp = toc.querySelector('.toc-klapp');
   klapp.onclick = () => {
-    ui.tocZu = toc.classList.toggle('zu');
-    klapp.setAttribute('aria-expanded', String(!ui.tocZu));
-    klapp.title = ui.tocZu ? 'Inhaltsverzeichnis einblenden' : 'Inhaltsverzeichnis einklappen';
+    const zu = tocZu(toc.classList.toggle('zu'));
+    klapp.setAttribute('aria-expanded', String(!zu));
+    klapp.title = zu ? 'Inhaltsverzeichnis einblenden' : 'Inhaltsverzeichnis einklappen';
     protTocMarkieren();
   };
   c.querySelectorAll('.prot-toc [data-toc]').forEach(e => e.onclick = () => {

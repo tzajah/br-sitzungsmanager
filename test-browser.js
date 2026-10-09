@@ -2392,6 +2392,19 @@ async function pruefeProtokollInhalt() {
     chips: getComputedStyle(document.querySelector('.top-sprung')).display })`);
   assert.strictEqual(schmal.toc, 'none', 'auf schmalen Bildschirmen kein Verzeichnis');
   assert.notStrictEqual(schmal.chips, 'none', 'dort bleibt die TOP-Sprungleiste');
+
+  /* Der Einklapp-Zustand übersteht ein Neuladen. */
+  await seite.evaluate(`document.querySelector('.prot-toc .toc-klapp').click()`);
+  await seite.reload();
+  await seite.waitForFunction('typeof APP_MODUS !== "undefined"', null, { timeout: 5000 });
+  await seite.evaluate(AUFBAU);
+  const nachReload = await seite.evaluate(`(() => {
+    ui.tab = 'protokoll'; renderHaupt();
+    const zu = document.querySelector('.prot-toc').classList.contains('zu');
+    localStorage.removeItem('br-sitzungsmanager.tocZu');
+    return zu;
+  })()`);
+  assert.ok(nachReload, 'eingeklappt bleibt eingeklappt, auch nach dem Neuladen');
   assert.deepStrictEqual(fehler, [], 'keine Laufzeitfehler');
   await browser.close();
   console.log('OK  Protokoll: Inhaltsverzeichnis im Rand, springt, markiert die Stelle, scrollt mit');
