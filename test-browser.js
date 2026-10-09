@@ -2133,7 +2133,25 @@ async function pruefeAdminMenue() {
       daten.personen.push({ id: 'e2', name: 'Ersatz Zwei', gruppe: 'br', funktion: 'Ersatzmitglied', aktiv: true, email: 'vertretung@firma.de' });
       s.teilnahme = { o2: { status: 'entschuldigt', vertretenDurch: '  ersatz zwei ' } };
       const vertretung = einladungEmpfaenger(daten, s);
-      return { offen, ohne, mit, to, vertretung, gespeichert: daten.stammdaten.verteiler };
+      daten.personen.push({ id: 's1', name: 'Vertrauens Person', gruppe: 'sbv', funktion: 'Vertrauensperson', aktiv: true, email: 'vp@firma.de' });
+      s.teilnahme = {};
+      const sbvOhneGast = einladungEmpfaenger(daten, s);
+      s.gaeste = [{ id: 'g1', name: 'Vertrauens Person', typ: 'sbv', funktion: '', tops: [] }];
+      const sbvEinzeln = einladungEmpfaenger(daten, s);
+      oeffneStammdaten();
+      dlg.querySelector('.dlg-nav [data-reiter="gremium"]').click();
+      const sbvFeld = dlg.querySelector('#sdSbvVerteiler');
+      sbvFeld.value = ' sbv@firma.de ';
+      sbvFeld.dispatchEvent(new Event('input', { bubbles: true }));
+      dlg.close();
+      const sbvMit = einladungEmpfaenger(daten, s);
+      s.teilnahme = { e1: { status: 'anwesend', vertretenDurch: '' } };
+      const protokoll = protokollFertigEmpfaenger(daten, s);
+      s.teilnahme = {};
+      s.gaeste = [];
+      const sbvNichtGeladen = einladungEmpfaenger(daten, s);
+      return { offen, ohne, mit, to, vertretung, gespeichert: daten.stammdaten.verteiler,
+        sbvOhneGast, sbvEinzeln, sbvMit, protokoll, sbvNichtGeladen, sbvGespeichert: daten.stammdaten.sbvVerteiler };
     })()
   `);
   assert.deepStrictEqual(mail.offen, ['eins@firma.de', 'zwei@firma.de'], 'Ersatzmitglied mit Status „offen" wird nicht eingeladen');
@@ -2144,6 +2162,13 @@ async function pruefeAdminMenue() {
   assert.deepStrictEqual(mail.mit, ['br-verteiler@firma.de', 'ersatz@firma.de'],
     'mit Verteiler: der Verteiler statt der ordentlichen Mitglieder, Ersatzmitglieder weiter einzeln');
   assert.strictEqual(mail.to, 'To: br-verteiler@firma.de, ersatz@firma.de');
+  assert.deepStrictEqual(mail.sbvOhneGast, ['br-verteiler@firma.de'], 'nicht geladene SBV bekommt keine Einladung');
+  assert.deepStrictEqual(mail.sbvEinzeln, ['br-verteiler@firma.de', 'vp@firma.de'], 'ohne SBV-Verteiler: geladene SBV einzeln');
+  assert.strictEqual(mail.sbvGespeichert, 'sbv@firma.de', 'der SBV-Verteiler wird im Admin-Menü gespeichert');
+  assert.deepStrictEqual(mail.sbvMit, ['br-verteiler@firma.de', 'sbv@firma.de'], 'mit SBV-Verteiler: der Verteiler statt der Einzeladresse');
+  assert.deepStrictEqual(mail.protokoll, ['br-verteiler@firma.de', 'ersatz@firma.de', 'sbv@firma.de'],
+    '„Protokoll fertig": beide Verteiler statt Einzeladressen, anwesende Ersatzmitglieder einzeln');
+  assert.deepStrictEqual(mail.sbvNichtGeladen, ['br-verteiler@firma.de'], 'SBV-Verteiler nur, wenn die SBV geladen ist');
 
   const look = await seite.evaluate(`
     (() => {

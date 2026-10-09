@@ -565,6 +565,7 @@ function leeresProjekt() {
       vertraulich: true,
       nachrichtlich: 'Schwerbehindertenvertretung, Jugend- und Auszubildendenvertretung',
       verteiler: '',   /* optionaler E-Mail-Verteiler der ordentlichen Mitglieder */
+      sbvVerteiler: '',   /* optionaler E-Mail-Verteiler der SBV */
       logo: null
     },
     personen: [],
