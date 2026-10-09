@@ -3,8 +3,8 @@
 function renderTabProtokoll(c, s) {
   const updater = [];   // Ergebnis-Anzeigen, die bei Anwesenheitsänderung neu rechnen
 
-  c.innerHTML =
-    '<div class="karte"><div class="karte-kopf"><h3>Anwesenheit &amp; Beschlussfähigkeit</h3>' +
+  c.innerHTML = protTocHtml(s) +
+    '<div class="karte" data-tocanker="anwesenheit"><div class="karte-kopf"><h3>Anwesenheit &amp; Beschlussfähigkeit</h3>' +
       '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span id="quorumAnzeige"></span>' +
       '<button class="btn btn-klein" id="alleAnwesend">Alle Mitglieder als anwesend markieren</button></div></div>' +
     '<div class="karte-koerper">' +
@@ -18,11 +18,11 @@ function renderTabProtokoll(c, s) {
     '</div>' +
     '<div class="karte-fuss">Beschlussfähig ist der Betriebsrat, wenn mindestens die Hälfte der Mitglieder an der Beschlussfassung teilnimmt; Ersatzmitglieder zählen mit. Die eigenhändig unterschriebene Anwesenheitsliste ist der Niederschrift beizufügen.</div></div>' +
 
-    '<div class="karte"><div class="karte-kopf"><h3>Protokoll je Tagesordnungspunkt</h3></div>' +
+    '<div class="karte" data-tocanker="tops"><div class="karte-kopf"><h3>Protokoll je Tagesordnungspunkt</h3></div>' +
     '<div class="karte-koerper">' + topSprungleisteHtml(s, true) + '<div id="protTops"></div></div>' +
     '<div class="karte-fuss">Pflichtinhalt jeder Niederschrift: der <b>Wortlaut</b> jedes Beschlusses und die <b>Stimmenmehrheit</b> mit exakten Zahlen (Ja / Nein / Enthaltungen). Angaben wie „einstimmig" allein genügen nicht – die App druckt daher stets die genauen Stimmenzahlen.</div></div>' +
 
-    '<div class="karte"><div class="karte-kopf"><h3>Anlagen zum Protokoll</h3></div><div class="karte-koerper">' +
+    '<div class="karte" data-tocanker="anlagen"><div class="karte-kopf"><h3>Anlagen zum Protokoll</h3></div><div class="karte-koerper">' +
       '<div class="hinweis recht" style="margin-top:0"><b>Anlage 1</b> ist automatisch die Anwesenheitsliste (abschaltbar im Export). Hier hochgeladene Dateien werden ab <b>Anlage 2</b> fortlaufend nummeriert – z. B. die unterschriebene, eingescannte Anwesenheitsliste, Textform-Bestätigungen bei Videoteilnahme, Beschlussvorlagen oder erhobene Einwendungen.</div>' +
       '<div id="anlProt"></div>' +
     '</div></div>';
@@ -57,10 +57,71 @@ function renderTabProtokoll(c, s) {
   }
   s.tops.forEach((top, i) => protTops.appendChild(protokollTopBlock(s, top, i, updater)));
   topSprungleisteVerdrahten(c);
+  protTocVerdrahten(c);
 
   renderAnlagenWidget(c.querySelector('#anlProt'), s.anlagenProt, '');
   aktualisiereQuorum();
 }
+
+/* Inhaltsverzeichnis wie der Navigationsbereich in Word: steht im freien Rand links neben dem Protokoll
+   und scrollt mit (.prot-toc in br-design.css); auf schmalen Bildschirmen bleibt nur die TOP-Sprungleiste. */
+function protTocHtml(s) {
+  const eintrag = (ziel, text, ebene, nr, punkt) => '<button type="button" class="toc-e toc-' + ebene + '" data-toc="' + ziel + '">' +
+    (punkt || '') + (nr ? '<span class="toc-nr">' + nr + '</span>' : '') + '<span class="toc-t">' + esc(text) + '</span></button>';
+  const stand = t => {
+    const f = protokollFortschritt({ tops: [t] });
+    return '<span class="ts-punkt' + (f.erledigt === f.punkte ? ' voll' : f.erledigt ? ' teil' : '') + '"></span>';
+  };
+  /* Einklappbar zu einer schmalen Leiste; der Zustand gilt für die Sitzung im Browser (ui.tocZu), wie bei den TOP-Blöcken. */
+  return '<nav class="prot-toc' + (ui.tocZu ? ' zu' : '') + '" aria-label="Inhalt des Protokolls"><div class="toc-kopf"><span>Inhalt</span>' +
+    '<button type="button" class="btn btn-symbol btn-geist toc-klapp" aria-expanded="' + !ui.tocZu + '" aria-controls="tocListe" ' +
+    'title="' + (ui.tocZu ? 'Inhaltsverzeichnis einblenden' : 'Inhaltsverzeichnis einklappen') + '"><svg class="ic"><use href="#ic-chevron"/></svg></button></div>' +
+    '<div id="tocListe">' +
+    eintrag('anwesenheit', 'Anwesenheit & Beschlussfähigkeit', 1) +
+    eintrag('tops', 'Protokoll je TOP', 1) +
+    s.tops.map((t, i) => eintrag('top-' + i, t.titel || '(ohne Titel)', 2, 'TOP ' + (i + 1), stand(t)) +
+      (t.unterpunkte || []).map((u, j) => eintrag('up-' + i + '-' + j, u.titel || '(ohne Titel)', 3, (i + 1) + '.' + (j + 1))).join('')).join('') +
+    eintrag('anlagen', 'Anlagen zum Protokoll', 1) +
+    '</div></nav>';
+}
+function protTocVerdrahten(c) {
+  const toc = c.querySelector('.prot-toc'), klapp = toc.querySelector('.toc-klapp');
+  klapp.onclick = () => {
+    ui.tocZu = toc.classList.toggle('zu');
+    klapp.setAttribute('aria-expanded', String(!ui.tocZu));
+    klapp.title = ui.tocZu ? 'Inhaltsverzeichnis einblenden' : 'Inhaltsverzeichnis einklappen';
+    protTocMarkieren();
+  };
+  c.querySelectorAll('.prot-toc [data-toc]').forEach(e => e.onclick = () => {
+    const ziel = c.querySelector('[data-tocanker="' + e.dataset.toc + '"]');
+    if (!ziel) return;
+    /* Unterpunkt in einem zugeklappten TOP: erst aufklappen, sonst gibt es kein Ziel. */
+    const top = ziel.closest('.top-eintrag.zu');
+    if (top && top !== ziel) top.querySelector('[data-klapp]').click();
+    ziel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
+  protTocMarkieren();
+}
+/* Markiert den Abschnitt, in dem man gerade steht: den letzten, dessen Anfang oben unter der Reiterleiste liegt. */
+function protTocMarkieren() {
+  const toc = document.querySelector('.prot-toc');
+  if (!toc) return;
+  const eintraege = Array.from(toc.querySelectorAll('[data-toc]'));
+  let aktiv = eintraege[0];
+  for (const e of eintraege) {
+    const ziel = document.querySelector('[data-tocanker="' + e.dataset.toc + '"]');
+    if (ziel && ziel.offsetParent && ziel.getBoundingClientRect().top <= 100) aktiv = e;
+  }
+  for (const e of eintraege) {
+    e.classList.toggle('aktiv', e === aktiv);
+    if (e === aktiv) e.setAttribute('aria-current', 'location'); else e.removeAttribute('aria-current');
+  }
+  /* Langes Verzeichnis: aktiven Eintrag sichtbar halten (scrollTop statt scrollIntoView, das bräche das sanfte Scrollen ab). */
+  if (aktiv && (aktiv.offsetTop < toc.scrollTop || aktiv.offsetTop + aktiv.offsetHeight > toc.scrollTop + toc.clientHeight)) {
+    toc.scrollTop = aktiv.offsetTop - toc.clientHeight / 3;
+  }
+}
+window.addEventListener('scroll', protTocMarkieren, { passive: true });
 
 function zeitMitJetztHtml(id, label, hinweis) {
   return '<div class="feld"><label for="' + id + '">' + label + '</label>' +
@@ -91,6 +152,7 @@ function protokollTopBlock(s, top, i, updater) {
   const wrap = document.createElement('div');
   wrap.className = 'top-eintrag';
   wrap.setAttribute('data-topanker', top.id || '');
+  wrap.setAttribute('data-tocanker', 'top-' + i);
   wrap.innerHTML =
     '<div class="top-kopf"><span class="top-nr">TOP ' + (i + 1) + '</span>' +
     '<span style="flex:1;font-weight:650;padding:4px 8px">' + esc(top.titel || '(ohne Titel)') + '</span>' +
@@ -107,6 +169,7 @@ function protokollTopBlock(s, top, i, updater) {
   (top.unterpunkte || []).forEach((u, j) => {
     const sub = document.createElement('div');
     sub.className = 'unterpunkt-prot';
+    sub.setAttribute('data-tocanker', 'up-' + i + '-' + j);
     sub.innerHTML =
       '<div class="up-kopf"><span class="top-nr">' + (i + 1) + '.' + (j + 1) + '</span>' +
       '<span style="flex:1;font-weight:600;padding:4px 8px">' + esc(u.titel || '(ohne Titel)') + '</span>' +
