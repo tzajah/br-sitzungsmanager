@@ -68,7 +68,7 @@ function renderTabProtokoll(c, s) {
 function protTocHtml(s) {
   const eintrag = (ziel, text, ebene, nr, punkt) => '<button type="button" class="toc-e toc-' + ebene + '" data-toc="' + ziel + '">' +
     (punkt || '') + (nr ? '<span class="toc-nr">' + nr + '</span>' : '') + '<span class="toc-t">' + esc(text) + '</span></button>';
-  const stand = t => '<span class="' + tocStandKlasse(t) + '"></span>';
+  const stand = t => '<span class="' + topStand(t).klasse + '"></span>';
   /* Einklappbar zu einer schmalen Leiste; der Zustand wird geräte-lokal gemerkt (tocZu). */
   const zu = tocZu();
   return '<nav class="prot-toc' + (zu ? ' zu' : '') + '" aria-label="Inhalt des Protokolls"><div class="toc-kopf"><span>Inhalt</span>' +
@@ -82,17 +82,20 @@ function protTocHtml(s) {
     eintrag('anlagen', 'Anlagen zum Protokoll', 1) +
     '</div></nav>';
 }
-function tocStandKlasse(t) {
-  const f = protokollFortschritt({ tops: [t] });
-  return 'ts-punkt' + (f.erledigt === f.punkte ? ' voll' : f.erledigt ? ' teil' : '');
-}
-/* Live: hängt über sitzungsstandAuffrischen (br-app.js) an speichern(), also an jeder Eingabe, entprellt. */
-function protTocStandAuffrischen() {
+/* Live (Inhaltsverzeichnis und TOP-Sprungleiste): hängt über sitzungsstandAuffrischen (br-app.js) an speichern(), also an jeder Eingabe, entprellt. */
+function standPunkteAuffrischen() {
   const s = aktSitzung();
   if (!s) return;
   document.querySelectorAll('.prot-toc [data-toc^="top-"] .ts-punkt').forEach(punkt => {
     const t = s.tops[parseInt(punkt.parentNode.dataset.toc.slice(4), 10)];
-    if (t) punkt.className = tocStandKlasse(t);
+    if (t) punkt.className = topStand(t).klasse;
+  });
+  /* TOP-Sprungleiste (schmale Fenster, eingeklapptes Verzeichnis): Punkt und Tooltip */
+  document.querySelectorAll('.top-sprung.mit-stand .ts-chip').forEach(chip => {
+    const i = s.tops.findIndex(t => t.id === chip.dataset.ziel);
+    if (i < 0) return;
+    chip.querySelector('.ts-punkt').className = topStand(s.tops[i]).klasse;
+    chip.title = topChipTitel(s.tops[i], i);
   });
 }
 /* Einklapp-Zustand des Inhaltsverzeichnisses – geräte-lokal gemerkt wie bearbeiterName (nicht vertraulich). */

@@ -44,7 +44,8 @@ veröffentlichten Releases).
   fähigkeit, alle TOPs mit Stand-Punkt (aktualisiert sich beim Tippen) und ihren Unterpunkten,
   Anlagen. Ein Klick springt an die Stelle, ein zugeklappter TOP klappt dafür auf; der Abschnitt,
   in dem man gerade steht, ist markiert. Ab 1280 px Fensterbreite (ist der Rand schmaler, rückt das Protokoll etwas nach rechts);
-  die TOP-Sprungleiste entfällt dann, auf schmaleren Bildschirmen bleibt sie wie bisher.
+  die TOP-Sprungleiste entfällt dann, auf schmaleren Bildschirmen bleibt sie wie bisher – ihre
+  Stand-Punkte und Tooltips aktualisieren sich jetzt ebenfalls beim Tippen.
   Über den Pfeil-Knopf im Kopf klappt das Verzeichnis zu einer schmalen Leiste ein; das Protokoll
   steht dann wieder mittig, und die TOP-Sprungleiste ist zurück. Der Zustand wird im Browser
   gemerkt und bleibt auch nach dem Neuladen erhalten.

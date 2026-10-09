@@ -425,7 +425,7 @@ function sitzungsstandAuffrischen() {
   clearTimeout(standTimer);
   standTimer = setTimeout(() => {
     if (APP_MODUS === 'protokoll') renderSitzungsstand();
-    protTocStandAuffrischen();
+    standPunkteAuffrischen();
   }, 250);
 }
 
@@ -1353,20 +1353,22 @@ function klappVerdrahten(wrap, top) {
   };
 }
 
+/* Protokollstand eines TOP für die Stand-Punkte in Sprungleiste und Inhaltsverzeichnis. */
+function topStand(t) {
+  const f = protokollFortschritt({ tops: [t] });
+  const fertig = f.erledigt === f.punkte, angefangen = f.erledigt > 0;
+  return { klasse: 'ts-punkt' + (fertig ? ' voll' : angefangen ? ' teil' : ''),
+    text: fertig ? 'protokolliert' : angefangen ? 'teilweise protokolliert' : 'noch nichts erfasst' };
+}
+const topChipTitel = (t, i) => (t.titel || 'TOP ' + (i + 1)) + ' – ' + topStand(t).text;
+
 /* Sprungleiste „TOP 1 … n" (ab vier Punkten). Mit `mitStand` (Protokoll-Reiter) zeigt ein Punkt je Chip, ob dazu schon protokolliert wurde. */
 function topSprungleisteHtml(s, mitStand) {
   if ((s.tops || []).length < 4) return '';
   return '<div class="top-sprung' + (mitStand ? ' mit-stand' : '') + '">' + s.tops.map((t, i) => {
-    let punkt = '', titelZusatz = '';
-    if (mitStand) {
-      const f = protokollFortschritt({ tops: [t] });
-      const fertig = f.erledigt === f.punkte;
-      const angefangen = f.erledigt > 0;
-      punkt = '<span class="ts-punkt' + (fertig ? ' voll' : angefangen ? ' teil' : '') + '"></span>';
-      titelZusatz = ' – ' + (fertig ? 'protokolliert' : angefangen ? 'teilweise protokolliert' : 'noch nichts erfasst');
-    }
+    const punkt = mitStand ? '<span class="' + topStand(t).klasse + '"></span>' : '';
     return '<button type="button" class="ts-chip" data-ziel="' + esc(t.id) + '" title="' +
-      esc((t.titel || 'TOP ' + (i + 1)) + titelZusatz) + '">' + punkt +
+      esc(mitStand ? topChipTitel(t, i) : t.titel || 'TOP ' + (i + 1)) + '">' + punkt +
       'TOP ' + (i + 1) + (t.titel ? ' · ' + esc(t.titel.length > 22 ? t.titel.slice(0, 22) + '…' : t.titel) : '') + '</button>';
   }).join('') + '</div>';
 }
