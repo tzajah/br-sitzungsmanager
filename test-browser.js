@@ -2148,10 +2148,17 @@ async function pruefeAdminMenue() {
       s.teilnahme = { e1: { status: 'anwesend', vertretenDurch: '' } };
       const protokoll = protokollFertigEmpfaenger(daten, s);
       s.teilnahme = {};
+      daten.personen.push({ id: 'j1', name: 'Jugend Vertreter', gruppe: 'jav', funktion: 'Vorsitzende/r', aktiv: true, email: 'jv@firma.de' });
+      s.gaeste.push({ id: 'g2', name: 'Jugend Vertreter', typ: 'jav', funktion: '', tops: [] });
+      const javEinzeln = einladungEmpfaenger(daten, s);
+      daten.stammdaten.javVerteiler = 'jav@firma.de';
+      const javMit = einladungEmpfaenger(daten, s);
+      const javProtokoll = protokollFertigEmpfaenger(daten, s);
       s.gaeste = [];
       const sbvNichtGeladen = einladungEmpfaenger(daten, s);
       return { offen, ohne, mit, to, vertretung, gespeichert: daten.stammdaten.verteiler,
-        sbvOhneGast, sbvEinzeln, sbvMit, protokoll, sbvNichtGeladen, sbvGespeichert: daten.stammdaten.sbvVerteiler };
+        sbvOhneGast, sbvEinzeln, sbvMit, protokoll, javEinzeln, javMit, javProtokoll,
+        javFeld: !!dlg.querySelector('#sdJavVerteiler'), sbvNichtGeladen, sbvGespeichert: daten.stammdaten.sbvVerteiler };
     })()
   `);
   assert.deepStrictEqual(mail.offen, ['eins@firma.de', 'zwei@firma.de'], 'Ersatzmitglied mit Status „offen" wird nicht eingeladen');
@@ -2168,6 +2175,10 @@ async function pruefeAdminMenue() {
   assert.deepStrictEqual(mail.sbvMit, ['br-verteiler@firma.de', 'sbv@firma.de'], 'mit SBV-Verteiler: der Verteiler statt der Einzeladresse');
   assert.deepStrictEqual(mail.protokoll, ['br-verteiler@firma.de', 'ersatz@firma.de', 'sbv@firma.de'],
     '„Protokoll fertig": beide Verteiler statt Einzeladressen, anwesende Ersatzmitglieder einzeln');
+  assert.ok(mail.javFeld, 'Feld für den JAV-Verteiler im Admin-Menü');
+  assert.deepStrictEqual(mail.javEinzeln, ['br-verteiler@firma.de', 'sbv@firma.de', 'jv@firma.de'], 'ohne JAV-Verteiler: geladene JAV einzeln');
+  assert.deepStrictEqual(mail.javMit, ['br-verteiler@firma.de', 'sbv@firma.de', 'jav@firma.de'], 'mit JAV-Verteiler: der Verteiler statt der Einzeladresse');
+  assert.deepStrictEqual(mail.javProtokoll, ['br-verteiler@firma.de', 'sbv@firma.de', 'jav@firma.de'], '„Protokoll fertig" nutzt auch den JAV-Verteiler');
   assert.deepStrictEqual(mail.sbvNichtGeladen, ['br-verteiler@firma.de'], 'SBV-Verteiler nur, wenn die SBV geladen ist');
 
   const look = await seite.evaluate(`

@@ -73,6 +73,9 @@ veröffentlichten Releases).
 - **„Protokoll fertig“-Mail nutzt die Verteiler.** Wie bei der Einladung gehen die ordentlichen
   Mitglieder über den BR-Verteiler und die geladene SBV über den SBV-Verteiler, sofern
   hinterlegt. Anwesende Ersatzmitglieder bekommen die Mail weiter einzeln.
+- **E-Mail-Verteiler der JAV** (Admin-Menü → „Gremium“, optional) – analog zum SBV-Verteiler:
+  Ist er hinterlegt und die JAV als Gast der Sitzung geladen, gehen Einladungs- und
+  „Protokoll fertig“-Mail an den JAV-Verteiler statt an die Einzeladressen der JAV-Personen.
 - **Unterpunkte haben eine eigene Kategorie** – in der Sitzung wie bei den Standard-TOPs.
   Im Reiter „Tagesordnung“ steht unter dem Titel jedes Unterpunkts die Auswahl „Art des
   Unterpunkts“, im Standard-TOP-Editor eine Auswahl neben dem Titel. Ein neu angelegter
