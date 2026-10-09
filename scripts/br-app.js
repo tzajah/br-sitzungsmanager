@@ -1442,9 +1442,29 @@ function renderHaupt() {
       () => { const wegId = s.id; daten.sitzungen = daten.sitzungen.filter(x => x.id !== wegId); ui.sitzungId = daten.sitzungen[0] ? daten.sitzungen[0].id : null; dirtySitzungen.delete(wegId); Speicher.sitzungLoeschen(wegId).catch(() => {}); speichern(true); renderAlles(); },
       'Endgültig löschen', true);
   }
-  c.querySelectorAll('.tabs button').forEach(b => b.onclick = () => { ui.tab = b.dataset.tab; renderHaupt(); });
+  c.querySelectorAll('.tabs button').forEach(b => b.onclick = () => {
+    const stelle = aktuelleStelle();
+    ui.tab = b.dataset.tab; renderHaupt();
+    if (stelle) springeZuStelle(stelle);
+  });
 
   renderTab(c.querySelector('#tabInhalt'), s);
+}
+
+/* Reiterwechsel Tagesordnung ↔ Protokoll: dort weiter, wo man war. Maßgeblich ist der TOP bzw. Unterpunkt, der oben
+   unter der Reiterleiste steht (wie die Markierung im Inhaltsverzeichnis). Ganz oben auf der Seite: kein Sprung. */
+function aktuelleStelle() {
+  let stelle = null;
+  document.querySelectorAll('#tabInhalt [data-topanker], #tabInhalt [data-upanker]').forEach(el => {
+    const id = el.dataset.upanker || el.dataset.topanker;
+    if (id && el.offsetParent && el.getBoundingClientRect().top <= 100) stelle = { attr: el.dataset.upanker ? 'data-upanker' : 'data-topanker', id };
+  });
+  return stelle;
+}
+function springeZuStelle(stelle) {
+  let ziel = document.querySelector('#tabInhalt [' + stelle.attr + '="' + CSS.escape(stelle.id) + '"]');
+  if (ziel && !ziel.offsetParent) ziel = ziel.closest('.top-eintrag');   /* Unterpunkt in zugeklapptem TOP */
+  if (ziel) ziel.scrollIntoView({ block: 'start' });
 }
 
 function tabKnopf(id, label, zahl) {

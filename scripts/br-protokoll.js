@@ -191,6 +191,7 @@ function protokollTopBlock(s, top, i, updater) {
     const sub = document.createElement('div');
     sub.className = 'unterpunkt-prot';
     sub.setAttribute('data-tocanker', 'up-' + i + '-' + j);
+    sub.setAttribute('data-upanker', u.id || '');
     sub.innerHTML =
       '<div class="up-kopf"><span class="top-nr">' + (i + 1) + '.' + (j + 1) + '</span>' +
       '<span style="flex:1;font-weight:600;padding:4px 8px">' + esc(u.titel || '(ohne Titel)') + '</span>' +
