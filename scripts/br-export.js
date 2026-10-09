@@ -116,20 +116,16 @@ function einladungEmpfaenger(daten, s) {
   gastEmpfaenger(daten, s, add);
   return Array.from(map.values());
 }
-/* Als Gast geladene SBV/JAV (Einladung und „Protokoll fertig"). Der SBV-Verteiler ersetzt die
-   Einzeladressen der SBV, sobald die SBV als Gast geladen ist. */
+/* Als Gast geladene SBV/JAV (Einladung und „Protokoll fertig"). Ein hinterlegter SBV- bzw. JAV-Verteiler ersetzt
+   die Einzeladressen der Gruppe, sobald sie als Gast geladen ist. */
 function gastEmpfaenger(daten, s, add) {
   const gaeste = ((s || {}).gaeste || []);
   const gastNamen = new Set(gaeste.map(g => (g.name || '').trim().toLowerCase()).filter(Boolean));
-  const sbvVerteiler = ((daten.stammdaten || {}).sbvVerteiler || '').trim();
-  const sbvGeladen = gaeste.some(g => g.typ === 'sbv') ||
-    aktivePersonen(daten, 'sbv').some(p => gastNamen.has((p.name || '').trim().toLowerCase()));
-  if (sbvVerteiler && sbvGeladen) add(sbvVerteiler);
   for (const gruppe of ['sbv', 'jav']) {
-    if (gruppe === 'sbv' && sbvVerteiler) continue;
-    for (const p of aktivePersonen(daten, gruppe)) {
-      if (gastNamen.has((p.name || '').trim().toLowerCase())) add(p.email);
-    }
+    const geladen = aktivePersonen(daten, gruppe).filter(p => gastNamen.has((p.name || '').trim().toLowerCase()));
+    const verteiler = ((daten.stammdaten || {})[gruppe + 'Verteiler'] || '').trim();
+    if (!verteiler) geladen.forEach(p => add(p.email));
+    else if (geladen.length || gaeste.some(g => g.typ === gruppe)) add(verteiler);
   }
 }
 function emlBetreff(txt) {
@@ -736,6 +732,8 @@ function oeffneStammdaten() {
           'nur ordentliche Mitglieder; ersetzt in der Einladungs-Mail deren Einzeladressen. Ersatzmitglieder werden immer einzeln eingeladen.') +
         feldHtml('sdSbvVerteiler', 'E-Mail-Verteiler der SBV', 'email', 'placeholder="optional, z. B. sbv@firma.de"',
           'wird in der Einladungs-Mail statt der Einzeladressen genutzt, wenn die SBV als Gast geladen ist.') +
+        feldHtml('sdJavVerteiler', 'E-Mail-Verteiler der JAV', 'email', 'placeholder="optional, z. B. jav@firma.de"',
+          'wird in der Einladungs-Mail statt der Einzeladressen genutzt, wenn die JAV als Gast geladen ist.') +
       '</div><div class="raster s3" style="margin-top:14px">' +
         feldHtml('sdGroesse', 'Gremiumgröße', 'number', 'min="1" max="99"', 'Basis der Beschlussfähigkeitsprüfung') +
         feldHtml('sdNachrichtlich', 'Einladung nachrichtlich an', 'text', '', 'z. B. SBV und JAV; leer = keine Zeile') +
@@ -851,6 +849,7 @@ function oeffneStammdaten() {
   bindeText(dlg.querySelector('#sdNachrichtlich'), () => st.nachrichtlich, v => { st.nachrichtlich = v; });
   bindeText(dlg.querySelector('#sdVerteiler'), () => st.verteiler, v => { st.verteiler = v.trim(); });
   bindeText(dlg.querySelector('#sdSbvVerteiler'), () => st.sbvVerteiler, v => { st.sbvVerteiler = v.trim(); });
+  bindeText(dlg.querySelector('#sdJavVerteiler'), () => st.javVerteiler, v => { st.javVerteiler = v.trim(); });
 
   const logoInfo = dlg.querySelector('#sdLogoInfo'), logoWeg = dlg.querySelector('#sdLogoWeg');
   const logoLeisteInfo = dlg.querySelector('#sdLogoLeisteInfo');

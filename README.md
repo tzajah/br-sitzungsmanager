@@ -87,8 +87,8 @@ Anwesenheitsliste, Niederschrift) nach den einschlägigen Vorschriften des BetrV
   Briefkopf, Logo und Akzentfarbe; dazu eine reine Textfassung für Programme ohne HTML) mit den aktiven BR-Mitgliedern
   als Empfänger (aus deren E-Mail-Adressen) sowie der als Gast geladenen SBV und JAV.
   Ist im Admin-Menü ein **E-Mail-Verteiler des Gremiums** hinterlegt, ersetzt er die
-  Einzeladressen der ordentlichen Mitglieder; ein **E-Mail-Verteiler der SBV** ersetzt entsprechend
-  die Einzeladressen der SBV, wenn sie als Gast geladen ist. Ersatzmitglieder werden einzeln eingeladen –
+  Einzeladressen der ordentlichen Mitglieder; ein **E-Mail-Verteiler der SBV** bzw. **der JAV** ersetzt entsprechend
+  die Einzeladressen der jeweiligen Gruppe, wenn sie als Gast geladen ist. Ersatzmitglieder werden einzeln eingeladen –
   und nur, wenn sie für die Sitzung geladen sind (geplante Anwesenheit „anwesend“/„Video“
   oder unter „Vertreten durch“ genannt);
   der vollständige Einladungstext steht im Mailtext (kein PDF-Anhang) – öffnet in
