@@ -2385,6 +2385,18 @@ async function pruefeProtokollInhalt() {
   assert.notStrictEqual(klapp.zu.chips, 'none', 'eingeklappt sind die TOP-Chips wieder da');
   assert.ok(klapp.nachRender, 'der Zustand bleibt beim Neuaufbau erhalten');
   assert.ok(klapp.wiederOffen, 'und lässt sich wieder aufklappen');
+  const live = await seite.evaluate(`(async () => {
+    /* speichern() wirkt erst mit Schlüssel; geschrieben wird hier nichts. */
+    sitzungsSchluessel = {}; flushSpeicher = async () => {};
+    const punkt = () => document.querySelector('.prot-toc [data-toc="top-1"] .ts-punkt').className;
+    const vorher = punkt();
+    const ed = document.querySelector('[data-tocanker="top-1"] [data-f="verlauf"]');
+    ed.focus(); document.execCommand('insertText', false, 'Erörtert');
+    await new Promise(r => setTimeout(r, 400));
+    return { vorher, nachher: punkt() };
+  })()`);
+  assert.strictEqual(live.vorher, 'ts-punkt', 'leerer TOP: offener Punkt');
+  assert.strictEqual(live.nachher, 'ts-punkt voll', 'der Stand-Punkt füllt sich beim Tippen, ohne Neuaufbau');
   if (process.env.BR_SCREENSHOTS) await seite.addStyleTag({ content: '.sperrschirm{display:none !important}' }).then(() => seite.screenshot({ path: path.join(process.env.BR_SCREENSHOTS, 'protokoll-inhalt.png') }));
 
   await seite.setViewportSize({ width: 1000, height: 800 });

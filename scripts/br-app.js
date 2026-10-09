@@ -418,12 +418,15 @@ function speichern(sofort) {
   sitzungsstandAuffrischen();
 }
 
-/* Sitzungsstand hängt an speichern() statt an jedem einzelnen Eingabeweg, entprellt gegen das Tippen. */
+/* Sitzungsstand und Stand-Punkte im Inhaltsverzeichnis hängen an speichern() statt an jedem einzelnen Eingabeweg,
+   entprellt gegen das Tippen. */
 let standTimer = null;
 function sitzungsstandAuffrischen() {
-  if (APP_MODUS !== 'protokoll') return;
   clearTimeout(standTimer);
-  standTimer = setTimeout(renderSitzungsstand, 250);
+  standTimer = setTimeout(() => {
+    if (APP_MODUS === 'protokoll') renderSitzungsstand();
+    protTocStandAuffrischen();
+  }, 250);
 }
 
 async function flushSpeicher() {

@@ -41,9 +41,9 @@ veröffentlichten Releases).
 ### Hinzugefügt
 - **Inhaltsverzeichnis im Reiter „Protokoll“** – wie der Navigationsbereich in Word. Es steht im
   freien Rand zwischen Seitenleiste und Protokoll und scrollt mit: Anwesenheit & Beschluss-
-  fähigkeit, alle TOPs mit Stand-Punkt und ihren Unterpunkten, Anlagen. Ein Klick springt an die
-  Stelle, ein zugeklappter TOP klappt dafür auf; der Abschnitt, in dem man gerade steht, ist
-  markiert. Ab 1280 px Fensterbreite (ist der Rand schmaler, rückt das Protokoll etwas nach rechts);
+  fähigkeit, alle TOPs mit Stand-Punkt (aktualisiert sich beim Tippen) und ihren Unterpunkten,
+  Anlagen. Ein Klick springt an die Stelle, ein zugeklappter TOP klappt dafür auf; der Abschnitt,
+  in dem man gerade steht, ist markiert. Ab 1280 px Fensterbreite (ist der Rand schmaler, rückt das Protokoll etwas nach rechts);
   die TOP-Sprungleiste entfällt dann, auf schmaleren Bildschirmen bleibt sie wie bisher.
   Über den Pfeil-Knopf im Kopf klappt das Verzeichnis zu einer schmalen Leiste ein; das Protokoll
   steht dann wieder mittig, und die TOP-Sprungleiste ist zurück. Der Zustand wird im Browser
