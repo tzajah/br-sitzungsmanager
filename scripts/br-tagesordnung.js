@@ -179,6 +179,7 @@ function renderUnterpunkteEditor(container, s, top, i) {
       const nr = (i + 1) + '.' + (j + 1);
       const z = document.createElement('div');
       z.className = 'unterpunkt-zeile';
+      z.setAttribute('data-upanker', u.id || '');
       z.innerHTML =
         '<div class="up-kopf"><span class="top-nr">' + nr + '</span>' +
         '<input class="top-titel-eingabe" data-f="titel" placeholder="Titel des Unterpunkts">' +

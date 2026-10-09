@@ -49,6 +49,9 @@ veröffentlichten Releases).
   Über den Pfeil-Knopf im Kopf klappt das Verzeichnis zu einer schmalen Leiste ein; das Protokoll
   steht dann wieder mittig, und die TOP-Sprungleiste ist zurück. Der Zustand wird im Browser
   gemerkt und bleibt auch nach dem Neuladen erhalten.
+- **Reiterwechsel Tagesordnung ↔ Protokoll bleibt an derselben Stelle.** Wer im einen Reiter bei
+  einem TOP oder Unterpunkt steht, landet nach dem Wechsel im anderen Reiter beim selben TOP bzw.
+  Unterpunkt (ist der TOP dort zugeklappt, bei seinem Kopf). Ganz oben auf der Seite bleibt es oben.
 - **Die Einladungs-Mail (`.eml`) sieht aus wie die PDF-Einladung.** Bisher war sie reiner
   Text; jetzt ist sie eine HTML-Mail im selben Aufbau: Briefkopf mit Gremium, Firma, Ort und
   Logo, die Doppellinie in der Akzentfarbe, Datumszeile, Titel, Rahmendaten, Tagesordnung mit

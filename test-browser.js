@@ -2409,6 +2409,28 @@ async function pruefeProtokollInhalt() {
   assert.strictEqual(schmal.toc, 'none', 'auf schmalen Bildschirmen kein Verzeichnis');
   assert.notStrictEqual(schmal.chips, 'none', 'dort bleibt die TOP-Sprungleiste');
 
+  /* Reiterwechsel Tagesordnung ↔ Protokoll: derselbe TOP bzw. Unterpunkt steht oben. */
+  await seite.setViewportSize({ width: 1600, height: 800 });
+  const wechsel = await seite.evaluate(`(() => {
+    const s = daten.sitzungen[0];
+    const klick = tab => document.querySelector('.tabs [data-tab="' + tab + '"]').click();
+    const imBlick = sel => { const r = document.querySelector(sel).getBoundingClientRect(); return r.top >= 0 && r.top < 120; };
+    document.querySelector('[data-topanker="' + s.tops[2].id + '"]').scrollIntoView({ block: 'start' });
+    klick('tagesordnung');
+    const toTop = imBlick('#tabInhalt [data-topanker="' + s.tops[2].id + '"]');
+    document.querySelector('#tabInhalt [data-upanker="' + s.tops[3].unterpunkte[0].id + '"]').scrollIntoView({ block: 'start' });
+    klick('protokoll');
+    const protUp = imBlick('#tabInhalt [data-upanker="' + s.tops[3].unterpunkte[0].id + '"]');
+    window.scrollTo(0, 0);
+    klick('tagesordnung');
+    const obenBleibt = window.scrollY === 0;
+    klick('protokoll');
+    return { toTop, protUp, obenBleibt };
+  })()`);
+  assert.ok(wechsel.toTop, 'Protokoll → Tagesordnung: derselbe TOP steht oben');
+  assert.ok(wechsel.protUp, 'Tagesordnung → Protokoll: derselbe Unterpunkt steht oben');
+  assert.ok(wechsel.obenBleibt, 'ganz oben auf der Seite bleibt es oben');
+
   /* Der Einklapp-Zustand übersteht ein Neuladen. */
   await seite.evaluate(`document.querySelector('.prot-toc .toc-klapp').click()`);
   await seite.reload();

@@ -369,7 +369,7 @@ input.eingabe,select.eingabe,textarea.eingabe{
 .toc-nr{flex:none;font-family:var(--schrift-kennfeld);font-size:11px;font-weight:700;letter-spacing:.04em;color:var(--grau)}
 .toc-t{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .toc-1 .toc-t{white-space:normal}
-[data-tocanker]{scroll-margin-top:72px}
+[data-tocanker],[data-upanker]{scroll-margin-top:72px}
 
 .ts-punkt{width:9px;height:9px;flex:none;border:1.5px solid var(--linie-stark);background:transparent}
 .ts-punkt.teil{border-color:var(--akzent);background:linear-gradient(to right,var(--akzent) 50%,transparent 50%)}
