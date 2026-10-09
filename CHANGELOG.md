@@ -66,6 +66,13 @@ veröffentlichten Releases).
   Einzeladressen ein. Ersatzmitglieder stehen nicht im Verteiler und werden immer über ihre
   eigene Adresse eingeladen; ebenso die als Gast geladene SBV und JAV. Ohne Verteiler bleibt
   alles wie bisher. Der Verteiler gehört zu den Stammdaten und reist mit der Datei „Gremium“.
+- **E-Mail-Verteiler der SBV** (Admin-Menü → „Gremium“, optional). Ist er hinterlegt und die
+  SBV als Gast der Sitzung geladen, geht die Einladungs-Mail an den SBV-Verteiler statt an die
+  Einzeladressen der SBV-Personen. Ohne geladene SBV bleibt er außen vor; ohne Verteiler bleibt
+  alles wie bisher. Gehört zu den Stammdaten und reist mit der Datei „Gremium“.
+- **„Protokoll fertig“-Mail nutzt die Verteiler.** Wie bei der Einladung gehen die ordentlichen
+  Mitglieder über den BR-Verteiler und die geladene SBV über den SBV-Verteiler, sofern
+  hinterlegt. Anwesende Ersatzmitglieder bekommen die Mail weiter einzeln.
 - **Unterpunkte haben eine eigene Kategorie** – in der Sitzung wie bei den Standard-TOPs.
   Im Reiter „Tagesordnung“ steht unter dem Titel jedes Unterpunkts die Auswahl „Art des
   Unterpunkts“, im Standard-TOP-Editor eine Auswahl neben dem Titel. Ein neu angelegter

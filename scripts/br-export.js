@@ -113,13 +113,24 @@ function einladungEmpfaenger(daten, s) {
     if (p.funktion === 'Ersatzmitglied') { if (ersatzmitgliedGeladen(s, p)) add(p.email); }
     else if (!verteiler) add(p.email);
   });
-  const gastNamen = new Set(((s || {}).gaeste || []).map(g => (g.name || '').trim().toLowerCase()).filter(Boolean));
+  gastEmpfaenger(daten, s, add);
+  return Array.from(map.values());
+}
+/* Als Gast geladene SBV/JAV (Einladung und „Protokoll fertig"). Der SBV-Verteiler ersetzt die
+   Einzeladressen der SBV, sobald die SBV als Gast geladen ist. */
+function gastEmpfaenger(daten, s, add) {
+  const gaeste = ((s || {}).gaeste || []);
+  const gastNamen = new Set(gaeste.map(g => (g.name || '').trim().toLowerCase()).filter(Boolean));
+  const sbvVerteiler = ((daten.stammdaten || {}).sbvVerteiler || '').trim();
+  const sbvGeladen = gaeste.some(g => g.typ === 'sbv') ||
+    aktivePersonen(daten, 'sbv').some(p => gastNamen.has((p.name || '').trim().toLowerCase()));
+  if (sbvVerteiler && sbvGeladen) add(sbvVerteiler);
   for (const gruppe of ['sbv', 'jav']) {
+    if (gruppe === 'sbv' && sbvVerteiler) continue;
     for (const p of aktivePersonen(daten, gruppe)) {
       if (gastNamen.has((p.name || '').trim().toLowerCase())) add(p.email);
     }
   }
-  return Array.from(map.values());
 }
 function emlBetreff(txt) {
   if (/^[\x00-\x7F]*$/.test(txt)) return txt;
@@ -351,20 +362,19 @@ async function starteEinladungEml(btn, s) {
   }
 }
 
-/* Empfänger „Protokoll fertig": BR-Mitglieder (Ersatzmitglieder nur wenn anwesend) + Gast-SBV/JAV. Absender = Schriftführer/in. */
+/* Empfänger „Protokoll fertig": BR-Mitglieder (über den Verteiler, falls hinterlegt; Ersatzmitglieder einzeln und nur
+   wenn anwesend) + Gast-SBV/JAV (SBV ggf. über ihren Verteiler). Absender = Schriftführer/in. */
 function protokollFertigEmpfaenger(daten, s) {
   const map = new Map();
   const add = email => { const e = (email || '').trim(); if (e) map.set(e.toLowerCase(), e); };
   const anwesend = m => { const st = teilnahmeVon(s, m.id).status; return st === 'anwesend' || st === 'video'; };
+  const verteiler = ((daten.stammdaten || {}).verteiler || '').trim();
+  add(verteiler);
   for (const m of aktivePersonen(daten, 'br')) {
-    if (m.funktion !== 'Ersatzmitglied' || anwesend(m)) add(m.email);
+    if (m.funktion === 'Ersatzmitglied') { if (anwesend(m)) add(m.email); }
+    else if (!verteiler) add(m.email);
   }
-  const gastNamen = new Set((s.gaeste || []).map(g => (g.name || '').trim().toLowerCase()).filter(Boolean));
-  for (const gruppe of ['sbv', 'jav']) {
-    for (const p of aktivePersonen(daten, gruppe)) {
-      if (gastNamen.has((p.name || '').trim().toLowerCase())) add(p.email);
-    }
-  }
+  gastEmpfaenger(daten, s, add);
   return Array.from(map.values());
 }
 function protokollAbsender(daten, s) {
@@ -724,6 +734,8 @@ function oeffneStammdaten() {
       '</div><div class="raster s3" style="margin-top:14px">' +
         feldHtml('sdVerteiler', 'E-Mail-Verteiler des Gremiums', 'email', 'placeholder="optional, z. B. betriebsrat@firma.de"',
           'nur ordentliche Mitglieder; ersetzt in der Einladungs-Mail deren Einzeladressen. Ersatzmitglieder werden immer einzeln eingeladen.') +
+        feldHtml('sdSbvVerteiler', 'E-Mail-Verteiler der SBV', 'email', 'placeholder="optional, z. B. sbv@firma.de"',
+          'wird in der Einladungs-Mail statt der Einzeladressen genutzt, wenn die SBV als Gast geladen ist.') +
       '</div><div class="raster s3" style="margin-top:14px">' +
         feldHtml('sdGroesse', 'Gremiumgröße', 'number', 'min="1" max="99"', 'Basis der Beschlussfähigkeitsprüfung') +
         feldHtml('sdNachrichtlich', 'Einladung nachrichtlich an', 'text', '', 'z. B. SBV und JAV; leer = keine Zeile') +
@@ -838,6 +850,7 @@ function oeffneStammdaten() {
   bindeText(dlg.querySelector('#sdGroesse'), () => st.gremiumGroesse, v => { st.gremiumGroesse = parseInt(v, 10) || ''; });
   bindeText(dlg.querySelector('#sdNachrichtlich'), () => st.nachrichtlich, v => { st.nachrichtlich = v; });
   bindeText(dlg.querySelector('#sdVerteiler'), () => st.verteiler, v => { st.verteiler = v.trim(); });
+  bindeText(dlg.querySelector('#sdSbvVerteiler'), () => st.sbvVerteiler, v => { st.sbvVerteiler = v.trim(); });
 
   const logoInfo = dlg.querySelector('#sdLogoInfo'), logoWeg = dlg.querySelector('#sdLogoWeg');
   const logoLeisteInfo = dlg.querySelector('#sdLogoLeisteInfo');
