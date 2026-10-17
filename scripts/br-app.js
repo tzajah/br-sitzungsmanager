@@ -617,6 +617,8 @@ async function gremiumDateiErzeugen() {
 }
 
 /* Übernimmt window.BR_GREMIUM. Läuft nur im Protokollmodul – im Sitzungsmanager wird gepflegt, dort wäre die Datei nur ein Abbild des eigenen Standes. */
+/* true, sobald eine passende Datei „Gremium" entschlüsselt wurde – dann hat sie Vorrang vor category.js. */
+let gremiumGeladen = false;
 async function externesGremiumUebernehmen() {
   if (APP_MODUS !== 'protokoll') return false;
   const g = (typeof window !== 'undefined') ? window.BR_GREMIUM : null;
@@ -630,6 +632,7 @@ async function externesGremiumUebernehmen() {
     zeigeToast('Die Datei „Gremium" passt nicht zu dieser Installation und wurde übersprungen.', 'fehler');
     return false;
   }
+  gremiumGeladen = true;
   if (gremiumSignatur(inhalt) === gremiumSignatur(daten)) return false;
   for (const f of GREMIUM_FELDER) if (inhalt[f] !== undefined) daten[f] = inhalt[f];
   const norm = migriere(Object.assign({ app: 'br-sitzungsmanager', version: daten.version || 1, sitzungen: [] },
@@ -2289,7 +2292,11 @@ function sitzungDuplizieren(quelle) {
   s.videoHinweis = quelle.videoHinweis;
   s.tops = (quelle.tops || []).map(t => neuerTop({
     titel: t.titel, kategorie: t.kategorie, beschreibung: t.beschreibung,
-    referent: t.referent, dauer: t.dauer
+    referent: t.referent, dauer: t.dauer,
+    unterpunkte: (t.unterpunkte || []).map(u => neuerUnterpunkt({
+      titel: u.titel, kategorie: u.kategorie, beschreibung: u.beschreibung,
+      referent: u.referent, dauer: u.dauer
+    }))
   }));
   daten.sitzungen.push(s);
   ui.sitzungId = s.id;

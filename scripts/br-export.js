@@ -1593,7 +1593,7 @@ async function appStarten() {
   if (externeBeschlussVorlagenUebernehmen()) externUebernommen = true;
   if (externeUrlaubUebernehmen()) externUebernommen = true;
   if (await externesGremiumUebernehmen()) externUebernommen = true;
-  if (externeKategorienUebernehmen()) externUebernommen = true;
+  if (!gremiumGeladen && externeKategorienUebernehmen()) externUebernommen = true;
   kategorienAnwenden();
   if (externUebernommen) speichern();
   ui.sitzungId = daten.sitzungen[0] ? daten.sitzungen[0].id : null;
