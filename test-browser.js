@@ -1768,8 +1768,8 @@ async function pruefeAnmeldung() {
   assert.strictEqual(nachReload.sitzungen, 1, 'die Sitzungen sind vollständig');
 
   const geschlossen = await seite.evaluate(`
-    (() => {
-      sperren();
+    (async () => {
+      await sperren();
       return { schirm: !!document.getElementById('sperrschirm'), schluessel: sitzungsSchluessel,
                gemerkt: sessionStorage.getItem('br-sitzungsmanager.sitzung') };
     })()

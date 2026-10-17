@@ -248,4 +248,77 @@ assert.deepStrictEqual(roh(pdfF.akzent).map(v => Math.round(v * 255)), [0x1F, 0x
 assert.deepStrictEqual(roh(pdfF.gruen), [0, 0.404, 0.243], '„angenommen" bleibt grün');
 console.log('OK  Erscheinungsbild: Akzentfarbe mit abgeleiteten Varianten, Kontrast gewahrt');
 
-console.log('\nAlle Prüfungen bestanden.');
+/* Persistenz (br-app.js): Schreibreihenfolge, Schließen erst nach dem Speichern, Import atomar. IndexedDB ist durch einen Speicher-Stub ersetzt. */
+async function pruefePersistenz() {
+  const ctx = vm.createContext({
+    window: {}, crypto: require('crypto').webcrypto, console: { log() {}, warn() {} },
+    setTimeout, clearTimeout, TextEncoder, TextDecoder, btoa, atob
+  });
+  vm.runInContext(['br-kern.js', 'br-app.js'].map(f => fs.readFileSync(path.join(hier, f), 'utf8')).join('\n'), ctx, { filename: 'kern+app.js' });
+  const run = code => vm.runInContext(code, ctx);
+  run(`
+    var toasts = [], schreibLog = [], laufend = 0, maxLaufend = 0, fehlerBeim = null, warte = null, ersetzt = null;
+    setAutosaveInfo = () => {}; aktualisiereSicherungInfo = () => {}; sitzungsstandAuffrischen = () => {};
+    zeigeToast = (t, art) => toasts.push(art || ''); zeigeSperrschirm = () => {};
+    aktualisiereRollenUi = () => {}; renderAlles = () => {};
+    var schreib = async was => {
+      laufend++; maxLaufend = Math.max(maxLaufend, laufend);
+      try {
+        if (warte) await warte();
+        if (fehlerBeim === was) throw new Error('Schreibfehler');
+        schreibLog.push(was);
+      } finally { laufend--; }
+    };
+    Speicher.metaSetzen = () => schreib('meta');
+    Speicher.sitzungSetzen = rec => schreib('sitzung:' + rec.id);
+    Speicher.allesErsetzen = async (m, s, d) => { if (fehlerBeim === 'ersetzen') throw new Error('Quota'); ersetzt = { m: m.length, s: s.length, d: d.length }; };
+    sitzungsRolle = 'arbeit';
+    daten = leeresProjekt(); daten.sitzungen = [{ id: 's1', tops: [] }]; ui.sitzungId = 's1';
+  `);
+  await run(`Krypto.zufallsMk().then(mk => { sitzungsSchluessel = mk.key; })`);
+
+  /* Autospeichern: Änderung während des Schreibens bleibt markiert; Läufe überlappen nicht */
+  const e5 = await run(`(async () => {
+    warte = () => new Promise(r => setTimeout(r, 20));
+    dirtyMeta = true; dirtySitzungen.add('s1');
+    const p1 = flushSpeicher();
+    await new Promise(r => setTimeout(r, 30));          /* Meta wird gerade geschrieben … */
+    dirtyMeta = true; dirtySitzungen.add('s1');          /* … da kommt eine neue Änderung */
+    const p2 = flushSpeicher();
+    await p1; const nachErstem = dirtyMeta;
+    await p2;
+    return JSON.stringify({ nachErstem, maxLaufend, restMeta: dirtyMeta, rest: dirtySitzungen.size });
+  })()`).then(JSON.parse);
+  assert.strictEqual(e5.nachErstem, true, 'Änderung während des Schreibens bleibt markiert');
+  assert.strictEqual(e5.maxLaufend, 1, 'zwei Speicherläufe schreiben nie gleichzeitig');
+  assert.ok(!e5.restMeta && e5.rest === 0, 'der zweite Lauf schreibt die Nachzügler');
+  run(`warte = null; fehlerBeim = 'sitzung:s1'; dirtySitzungen.add('s1');`);
+  assert.strictEqual(await run('flushSpeicher()'), false, 'Schreibfehler wird gemeldet');
+  assert.ok(run(`dirtySitzungen.has('s1')`), 'nach Schreibfehler bleibt die Sitzung markiert');
+  console.log('OK  Autospeichern: keine verlorenen Markierungen, Läufe nacheinander');
+
+  /* Datei schließen: wartet aufs Speichern; scheitert es, bleibt die Datei offen */
+  await run('sperren()');
+  assert.ok(run('sitzungsSchluessel !== null') && run(`toasts.pop() === 'fehler'`), 'Speicherfehler: Datei bleibt offen, Fehlermeldung');
+  run(`fehlerBeim = null; warte = () => new Promise(r => setTimeout(r, 20)); schreibLog.length = 0;`);
+  await run('sperren()');
+  assert.ok(run(`schreibLog.includes('sitzung:s1')`), 'die Änderung wurde vor dem Schließen geschrieben');
+  assert.strictEqual(run('sitzungsSchluessel'), null, 'danach ist der Schlüssel weg');
+  console.log('OK  Datei schließen: erst speichern, dann Schlüssel verwerfen');
+
+  /* Import: erst alles verschlüsseln und schreiben, dann umschalten */
+  await run(`Krypto.zufallsMk().then(mk => { sitzungsSchluessel = mk.key; sitzungsRolle = 'arbeit'; warte = null; })`);
+  const projekt = inhalte => JSON.stringify({ app: 'br-sitzungsmanager', sitzungen: [{ id: 'neu1' }, { id: 'neu2' }], dokumentInhalte: inhalte });
+  await run(`projektUebernehmen(${projekt({ d1: '%%kaputt%%' })})`);
+  assert.ok(run(`ersetzt === null && daten.sitzungen[0].id === 's1' && toasts.pop() === 'fehler'`), 'kaputte Anlage: nichts geschrieben, alter Stand bleibt');
+  run(`fehlerBeim = 'ersetzen';`);
+  await run(`projektUebernehmen(${projekt({ d1: 'AAEC' })})`);
+  assert.ok(run(`daten.sitzungen[0].id === 's1' && toasts.pop() === 'fehler'`), 'Schreibfehler: alter Stand bleibt');
+  run(`fehlerBeim = null;`);
+  await run(`projektUebernehmen(${projekt({ d1: 'AAEC' })})`);
+  assert.deepStrictEqual(roh(run('ersetzt')), { m: 11, s: 2, d: 1 }, 'alles in einem Schritt ersetzt');
+  assert.ok(run(`daten.sitzungen.length === 2 && toasts.pop() === 'erfolg'`), 'danach gilt der neue Stand');
+  console.log('OK  Import: erst alles verschlüsseln und schreiben, dann umschalten');
+}
+
+pruefePersistenz().then(() => console.log('\nAlle Prüfungen bestanden.'), e => { console.error(e); process.exit(1); });

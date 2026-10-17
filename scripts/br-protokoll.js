@@ -479,8 +479,8 @@ function beschlussBlock(s, top, b, bi, neuZeichnen, updater) {
     b.tags = b.tags || [];
     tagBox.innerHTML = '<span class="klein-grau" style="margin-right:4px">Tags:</span>' + tags.map(t => {
       const an = b.tags.includes(t.id);
-      return '<button class="tag-chip' + (an ? ' an' : '') + '" data-tag="' + t.id + '"' +
-        (an ? ' style="background:' + t.farbe + ';border-color:' + t.farbe + '"' : '') + '>' + esc(t.name || 'Tag') + '</button>';
+      return '<button class="tag-chip' + (an ? ' an' : '') + '" data-tag="' + esc(t.id) + '"' +
+        (an ? ' style="background:' + tagFarbeSicher(t.farbe) + ';border-color:' + tagFarbeSicher(t.farbe) + '"' : '') + '>' + esc(t.name || 'Tag') + '</button>';
     }).join('');
     if (!darfBearbeiten()) return;   /* Nur-Lese-Ansicht: Tags nur anzeigen, nicht umschaltbar */
     tagBox.querySelectorAll('[data-tag]').forEach(ch => ch.onclick = () => {

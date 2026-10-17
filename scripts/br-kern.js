@@ -234,6 +234,19 @@ function esc(s) {
     .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
+/* Tag-Farbe aus fremden Sicherungen: nur #RRGGBB zulassen, sonst Standardfarbe (landet in style-Attributen). */
+function tagFarbeSicher(f) { return hexNorm(f) || TAG_FARBEN[0]; }
+
+/* Anlage ansehen: nur passive Typen im Tab öffnen (HTML/SVG aus Sicherungen würden sonst Skript ausführen), alles andere herunterladen. */
+const ANSEHEN_TYPEN = ['application/pdf', 'image/png', 'image/jpeg', 'image/gif', 'image/webp', 'text/plain'];
+function anlageAnsehen(bytes, mime, name) {
+  const typ = String(mime || '').toLowerCase().split(';')[0].trim();
+  if (!ANSEHEN_TYPEN.includes(typ)) return dateiHerunterladen(new Blob([bytes], { type: 'application/octet-stream' }), name);
+  const url = URL.createObjectURL(new Blob([bytes], { type: typ }));
+  window.open(url, '_blank', 'noopener');
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+}
+
 /* Verlauf-HTML: Whitelist-Tags, sanitisiert. Sicherheitskritisch – wird via innerHTML angezeigt und kann aus fremden Sicherungsdateien stammen. */
 /* DIV gehört dazu: Chrome legt beim Enter im Editor eine <div> je Zeile an – ohne sie ginge jeder Absatzumbruch schon beim Tippen verloren. */
 const VERLAUF_TAGS = new Set(['P', 'DIV', 'BR', 'B', 'STRONG', 'I', 'EM', 'U', 'UL', 'OL', 'LI']);

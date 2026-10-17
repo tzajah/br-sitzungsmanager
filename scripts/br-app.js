@@ -178,7 +178,23 @@ const Speicher = {
   dokumentHolen(id) { return this._req(this._store('dokumente', 'readonly').get(id)); },
   dokumentSetzen(rec) { return this._req(this._store('dokumente', 'readwrite').put(rec)); },
   dokumentLoeschen(id) { return this._req(this._store('dokumente', 'readwrite').delete(id)); },
-  storeLeeren(name) { return this._req(this._store(name, 'readwrite').clear()); }
+  storeLeeren(name) { return this._req(this._store(name, 'readwrite').clear()); },
+  /* Kompletter Austausch in EINER Transaktion: scheitert ein put, bleibt der alte Bestand unberührt. */
+  allesErsetzen(meta, sitzungen, dokumente) {
+    return new Promise((res, rej) => {
+      const tx = this.db.transaction(['meta', 'sitzungen', 'dokumente'], 'readwrite');
+      tx.oncomplete = () => res();
+      tx.onerror = () => rej(tx.error);
+      tx.onabort = () => rej(tx.error || new Error('Transaktion abgebrochen'));
+      const st = tx.objectStore('sitzungen'), dk = tx.objectStore('dokumente'), mt = tx.objectStore('meta');
+      try {
+        st.clear(); dk.clear();
+        for (const [name, wert] of meta) mt.put(wert, name);
+        for (const rec of sitzungen) st.put(rec);
+        for (const rec of dokumente) dk.put(rec);
+      } catch (e) { tx.abort(); rej(e); }   /* synchroner Fehler (z. B. DataCloneError): sonst würden die clear() still festgeschrieben */
+    });
+  }
 };
 
 /* Verschlüsselte Meta-/Sitzungs-Datensätze */
@@ -191,32 +207,45 @@ async function metaChiffriertHolen(name) {
   if (!rec) return null;
   return Krypto.dechiffriere(sitzungsSchluessel, rec.iv, rec.ct);
 }
+function metaEintraege(d) {
+  return [
+    ['appmeta', {
+      app: 'br-sitzungsmanager', version: d.version || 1,
+      revision: d.revision || 0, zuletztGesichert: d.zuletztGesichert || null,
+      aenderungsstand: d.aenderungsstand || 0, exportStand: d.exportStand || 0
+    }],
+    ['stammdaten', d.stammdaten],
+    ['personen', d.personen || []],
+    ['dokumente', d.dokumente || []],
+    ['standardTops', d.standardTops || []],
+    ['kategorien', d.kategorien || []],
+    ['protokollVorlagen', d.protokollVorlagen || []],
+    ['beschlussVorlagen', d.beschlussVorlagen || []],
+    ['urlaub', d.urlaub || []],
+    ['beschlussTags', d.beschlussTags || []],
+    ['exportOptionen', d.exportOptionen]
+  ];
+}
 async function metaAllesSchreiben() {
-  await metaChiffriertSetzen('appmeta', {
-    app: 'br-sitzungsmanager', version: daten.version || 1,
-    revision: daten.revision || 0, zuletztGesichert: daten.zuletztGesichert || null,
-    aenderungsstand: daten.aenderungsstand || 0, exportStand: daten.exportStand || 0
-  });
-  await metaChiffriertSetzen('stammdaten', daten.stammdaten);
-  await metaChiffriertSetzen('personen', daten.personen || []);
-  await metaChiffriertSetzen('dokumente', daten.dokumente || []);
-  await metaChiffriertSetzen('standardTops', daten.standardTops || []);
-  await metaChiffriertSetzen('kategorien', daten.kategorien || []);
-  await metaChiffriertSetzen('protokollVorlagen', daten.protokollVorlagen || []);
-  await metaChiffriertSetzen('beschlussVorlagen', daten.beschlussVorlagen || []);
-  await metaChiffriertSetzen('urlaub', daten.urlaub || []);
-  await metaChiffriertSetzen('beschlussTags', daten.beschlussTags || []);
-  await metaChiffriertSetzen('exportOptionen', daten.exportOptionen);
+  for (const [name, obj] of metaEintraege(daten)) await metaChiffriertSetzen(name, obj);
 }
 async function sitzungSchreibenP(s) {
   const { iv, ct } = await Krypto.chiffriere(sitzungsSchluessel, s);
   await Speicher.sitzungSetzen({ id: s.id, iv: iv, ct: ct });
 }
-async function alleDatenErsetzenP() {
-  await Speicher.storeLeeren('sitzungen');
-  await Speicher.storeLeeren('dokumente');
-  await metaAllesSchreiben();
-  for (const s of daten.sitzungen) await sitzungSchreibenP(s);
+/* Ersetzt den gesamten Bestand durch d (plus Dokument-Inhalte als Base64): erst alles verschlüsseln – kaputte Inhalte werfen hier –, dann in einer Transaktion tauschen. */
+async function alleDatenErsetzenP(d = daten, inhalte) {
+  const meta = [], sitzungen = [], dokumente = [];
+  for (const [name, obj] of metaEintraege(d)) meta.push([name, await Krypto.chiffriere(sitzungsSchluessel, obj)]);
+  for (const s of d.sitzungen) {
+    const { iv, ct } = await Krypto.chiffriere(sitzungsSchluessel, s);
+    sitzungen.push({ id: s.id, iv: iv, ct: ct });
+  }
+  for (const id of Object.keys(inhalte || {})) {
+    const { iv, ct } = await Krypto.verpacke(sitzungsSchluessel, base64ZuBytes(inhalte[id]));
+    dokumente.push({ id: id, iv: iv, ct: ct });
+  }
+  await Speicher.allesErsetzen(meta, sitzungen, dokumente);
 }
 
 /* Dokumente (verschlüsselte Blobs) */
@@ -268,11 +297,6 @@ async function dokumenteFuerBackup() {
     if (bytes) inhalte[d.id] = bytesZuBase64(bytes);
   }
   return inhalte;
-}
-async function dokumenteAusBackup(inhalte) {
-  await Speicher.storeLeeren('dokumente');
-  if (!inhalte) return;
-  for (const id of Object.keys(inhalte)) await dokumentBytesSpeichern(id, base64ZuBytes(inhalte[id]));
 }
 
 /* Laden / Einrichten / Entsperren */
@@ -413,9 +437,9 @@ function speichern(sofort) {
   dirtyMeta = true;
   if (ui.sitzungId) dirtySitzungen.add(ui.sitzungId);
   clearTimeout(speicherTimer);
-  if (sofort) flushSpeicher();
-  else speicherTimer = setTimeout(flushSpeicher, 500);
   sitzungsstandAuffrischen();
+  if (sofort) return flushSpeicher();
+  speicherTimer = setTimeout(flushSpeicher, 500);
 }
 
 /* Sitzungsstand und Stand-Punkte im Inhaltsverzeichnis hängen an speichern() statt an jedem einzelnen Eingabeweg,
@@ -429,23 +453,38 @@ function sitzungsstandAuffrischen() {
   }, 250);
 }
 
-async function flushSpeicher() {
+/* Alle Schreibläufe (Autospeichern, Import) laufen nacheinander über diese Kette – nie zwei gleichzeitig. */
+let speicherKette = Promise.resolve();
+function speicherReihe(fn) {
+  const p = speicherKette.then(fn);
+  speicherKette = p.catch(() => {});
+  return p;
+}
+/* Liefert true, wenn alles geschrieben wurde, false bei Fehler. */
+function flushSpeicher() { return speicherReihe(flushJetzt); }
+async function flushJetzt() {
   if (!sitzungsSchluessel) return;
   try {
-    if (dirtyMeta) { await metaAllesSchreiben(); dirtyMeta = false; }
+    /* Markierung vor dem Schreiben abnehmen: Änderungen während des Schreibens markieren neu und gehen nicht verloren. */
+    if (dirtyMeta) {
+      dirtyMeta = false;
+      try { await metaAllesSchreiben(); } catch (e) { dirtyMeta = true; throw e; }
+    }
     for (const id of Array.from(dirtySitzungen)) {
-      const s = daten.sitzungen.find(x => x.id === id);
-      if (s) await sitzungSchreibenP(s);
       dirtySitzungen.delete(id);
+      const s = daten.sitzungen.find(x => x.id === id);
+      try { if (s) await sitzungSchreibenP(s); } catch (e) { dirtySitzungen.add(id); throw e; }
     }
     ui.speicherFehler = false;
     const t = new Date();
     setAutosaveInfo('Verschlüsselt gespeichert um ' + String(t.getHours()).padStart(2, '0') + ':' + String(t.getMinutes()).padStart(2, '0') + ' Uhr (in diesem Browser)');
     aktualisiereSicherungInfo();
+    return true;
   } catch (e) {
     ui.speicherFehler = true;
     console.warn('Speichern fehlgeschlagen:', e);
     setAutosaveInfo('Speichern fehlgeschlagen – bitte über „Sichern (Datei)" sichern!', true);
+    return false;
   }
 }
 
@@ -830,13 +869,21 @@ async function projektDateiOeffnen(datei) {
 
 async function projektUebernehmen(projekt) {
   /* Installation (br-zugang.js) bleibt maßgeblich: gespeichert wird unter dem aktuellen Installations-MK, Zugang/Rolle der Anmeldung bleiben unverändert. */
-  daten = migriere(projekt);
+  /* Erst vollständig schreiben, dann umschalten: scheitert das Schreiben, bleibt der alte Stand in Speicher und Oberfläche. */
+  try {
+    const neu = migriere(projekt);
+    neu.exportStand = neu.aenderungsstand || 0;
+    await speicherReihe(async () => {
+      await alleDatenErsetzenP(neu, projekt.dokumentInhalte);
+      daten = neu; dirtyMeta = false; dirtySitzungen.clear();
+    });
+  } catch (e) {
+    console.warn('Sicherung konnte nicht übernommen werden:', e);
+    return zeigeToast('Die Sicherung konnte nicht übernommen werden (Inhalt beschädigt oder Speicher voll) – der bisherige Stand bleibt erhalten.', 'fehler');
+  }
   ui.sitzungId = daten.sitzungen[0] ? daten.sitzungen[0].id : null;
   ui.tab = modusStartReiter();   /* im Protokoll-Modus gibt es keinen Reiter „Sitzung" */
   ui.ansicht = 'sitzung';
-  daten.exportStand = daten.aenderungsstand || 0;
-  await alleDatenErsetzenP();
-  await dokumenteAusBackup(projekt.dokumentInhalte);
   aktualisiereRollenUi();
   renderAlles();
   aktualisiereSicherungInfo();
@@ -949,10 +996,10 @@ async function projektBeitreten(datei) {
     sitzungsRolle = inst.rolle; ui.rolle = inst.rolle;
     aktuellesZugang = zugang;
     await Speicher.metaSetzen('zugang', zugang);
-    daten = migriere(projekt);
-    daten.exportStand = daten.aenderungsstand || 0;
-    await alleDatenErsetzenP();
-    await dokumenteAusBackup(projekt.dokumentInhalte);
+    const neu = migriere(projekt);
+    neu.exportStand = neu.aenderungsstand || 0;
+    await speicherReihe(() => alleDatenErsetzenP(neu, projekt.dokumentInhalte));
+    daten = neu;
     sitzungMerken();
     await appStarten(); sperrschirmWeg();
     zeigeToast('Angemeldet als ' + (inst.rolle === 'admin' ? 'Debug-Mode' : (inst.rolle === 'arbeit' ? 'Arbeitsmodus' : 'Nur-Lese-Ansicht')) + '.', 'erfolg');
@@ -988,9 +1035,13 @@ function aktualisiereRollenUi() {
   }
 }
 
-function sperren() {
+async function sperren() {
   clearTimeout(speicherTimer);
-  if (darfBearbeiten()) speichern(true);
+  /* Schlüssel erst nach dem Schreiben verwerfen; scheitert es, bleibt die Datei offen, statt Änderungen still zu verlieren. */
+  if (darfBearbeiten() && (await speichern(true)) === false) {
+    zeigeToast('Ungespeicherte Änderungen konnten nicht gespeichert werden – die Datei bleibt geöffnet. Bitte über „Sichern (Datei)" sichern.', 'fehler');
+    return;
+  }
   sitzungVergessen();
   sitzungsSchluessel = null; sitzungsMkBytes = null;
   sitzungsRolle = null; ui.rolle = null;
@@ -1099,7 +1150,7 @@ function feldHtml(id, label, typ, extra, hinweis) {
 function sitzungKarteHtml(s) {
   const st = STATUS_META[s.status] || STATUS_META.entwurf;
   const spine = st.kl.replace('st-', 'sp-');
-  return '<button class="sitzung-karte ' + spine + (s.id === ui.sitzungId ? ' aktiv' : '') + (s.archiviert ? ' archiviert' : '') + '" data-id="' + s.id + '">' +
+  return '<button class="sitzung-karte ' + spine + (s.id === ui.sitzungId ? ' aktiv' : '') + (s.archiviert ? ' archiviert' : '') + '" data-id="' + esc(s.id) + '">' +
     '<div class="sk-nr">Sitzung ' + esc(s.nr) + (s.archiviert ? ' <span class="sk-archiv">Archiv</span>' : '') + '</div>' +
     '<div class="sk-datum">' + (s.datum ? esc(fmtDatum(s.datum, true)) : 'Termin offen') + '</div>' +
     '<div class="sk-status">' + esc(st.label) + '</div></button>';
@@ -1517,7 +1568,7 @@ function renderBeschlussUebersicht(c) {
         '<div class="feld"><label for="buStatus">Status</label><select id="buStatus"><option value="">Alle</option>' +
           Object.keys(BESCHLUSS_STATUS).map(k => '<option value="' + k + '">' + BESCHLUSS_STATUS[k] + '</option>').join('') + '</select></div>' +
         '<div class="feld"><label for="buTag">Tag</label><select id="buTag"><option value="">Alle Tags</option>' +
-          (daten.beschlussTags || []).map(t => '<option value="' + t.id + '">' + esc(t.name || 'Tag') + '</option>').join('') + '</select></div>' +
+          (daten.beschlussTags || []).map(t => '<option value="' + esc(t.id) + '">' + esc(t.name || 'Tag') + '</option>').join('') + '</select></div>' +
         '<div class="feld"><label for="buVon">Von (Datum)</label><input id="buVon" type="date"></div>' +
         '<div class="feld"><label for="buBis">Bis (Datum)</label><input id="buBis" type="date"></div>' +
         '<div class="feld"><label for="buSuche">Suche (Antrag, TOP, Sitzung)</label><input id="buSuche" type="search" placeholder="Stichwort …"></div>' +
@@ -1582,8 +1633,8 @@ function renderBeschlussUebersicht(c) {
               Object.keys(BESCHLUSS_STATUS).map(k => '<option value="' + k + '"' + (k === stStatus ? ' selected' : '') + '>' + BESCHLUSS_STATUS[k] + '</option>').join('') +
             '</select>'
           : '<span class="ampel ' + stKl + '">' + esc(BESCHLUSS_STATUS[stStatus] || BESCHLUSS_STATUS.in_arbeit) + '</span>';
-        const tagChips = beschlussTagObjekte(e.b).map(t => '<span class="tag-chip an" style="background:' + t.farbe + ';border-color:' + t.farbe + '">' + esc(t.name || 'Tag') + '</span>').join(' ');
-        return '<tr data-sid="' + e.sitzung.id + '" data-ri="' + i + '" title="Zum Protokoll dieser Sitzung">' +
+        const tagChips = beschlussTagObjekte(e.b).map(t => '<span class="tag-chip an" style="background:' + tagFarbeSicher(t.farbe) + ';border-color:' + tagFarbeSicher(t.farbe) + '">' + esc(t.name || 'Tag') + '</span>').join(' ');
+        return '<tr data-sid="' + esc(e.sitzung.id) + '" data-ri="' + i + '" title="Zum Protokoll dieser Sitzung">' +
           '<td class="mono">' + esc(beschlussNrText(e.b)) + '</td>' +
           '<td>' + (e.sitzung.datum ? esc(fmtDatum(e.sitzung.datum)) : '–') + '</td>' +
           '<td>' + esc(e.sitzung.nr || '') + '</td>' +
@@ -1778,7 +1829,7 @@ function renderAufgabenUebersicht(c) {
               Object.keys(AUFGABE_STATUS).map(k => '<option value="' + k + '"' + (k === auStatus ? ' selected' : '') + '>' + AUFGABE_STATUS[k] + '</option>').join('') +
             '</select>'
           : '<span class="ampel ' + stKl + '">' + esc(AUFGABE_STATUS[auStatus] || AUFGABE_STATUS.offen) + '</span>';
-        return '<tr data-sid="' + e.sitzung.id + '" data-ri="' + i + '" title="Zum Protokoll dieser Sitzung">' +
+        return '<tr data-sid="' + esc(e.sitzung.id) + '" data-ri="' + i + '" title="Zum Protokoll dieser Sitzung">' +
           '<td>' + (e.sitzung.datum ? esc(fmtDatum(e.sitzung.datum)) : '–') + '</td>' +
           '<td>' + esc(e.sitzung.nr || '') + '</td>' +
           '<td class="mono">' + esc(e.nr) + '</td>' +
@@ -1972,9 +2023,7 @@ function dokumentTabelleZeichnen(c, rows, neuZeichnen) {
     tr.querySelector('[data-tu="ansehen"]').onclick = async () => {
       const bytes = await laden(z);
       if (!bytes) return zeigeToast(anlageFehltMeldung(), 'fehler');
-      const url = URL.createObjectURL(new Blob([bytes], { type: z.mime || 'application/octet-stream' }));
-      window.open(url, '_blank');
-      setTimeout(() => URL.revokeObjectURL(url), 60000);
+      anlageAnsehen(bytes, z.mime, z.name);
     };
     tr.querySelector('[data-tu="laden"]').onclick = async () => {
       const bytes = await laden(z);
@@ -2297,7 +2346,7 @@ function anwesenheitTabelle(el, s, beiAenderung) {
       : '') +
     '<table class="tn-tabelle"><thead><tr><th style="width:34%">Mitglied</th><th style="width:24%">Status</th><th>Vertreten durch (Ersatzmitglied) / Teilnahme</th></tr></thead><tbody>' +
     mitglieder.map(m =>
-      '<tr data-mid="' + m.id + '"><td><b>' + esc(m.name) + '</b><br><span class="klein-grau">' + esc(m.funktion) +
+      '<tr data-mid="' + esc(m.id) + '"><td><b>' + esc(m.name) + '</b><br><span class="klein-grau">' + esc(m.funktion) +
         (urlaubJe[m.id] ? ' · <b>' + esc(urlaubJe[m.id].grund) + ' bis ' + esc(fmtDatum(urlaubJe[m.id].bis)) + '</b>' : '') + '</span></td>' +
       '<td><select data-f="status"><option value="">– offen –</option>' +
         Object.keys(TEILNAHME_LABEL).map(k => '<option value="' + k + '">' + TEILNAHME_LABEL[k] + '</option>').join('') +
@@ -2368,11 +2417,11 @@ function gaesteBlock(el, s) {
         ? (s.tops || []).map((t, ti) => {
             const topChecked = (g.tops || []).includes(t.id);
             const subHtml = (t.unterpunkte || []).map((u, ui) =>
-              '<label class="pruefreihe" style="margin:2px 0 2px 22px"><input type="checkbox" data-sub="' + u.id + '"' +
+              '<label class="pruefreihe" style="margin:2px 0 2px 22px"><input type="checkbox" data-sub="' + esc(u.id) + '"' +
               ((g.tops || []).includes(u.id) ? ' checked' : '') + (topChecked ? ' disabled' : '') + '> ' +
               (ti + 1) + '.' + (ui + 1) + '  ' + esc(u.titel || '(ohne Titel)') + '</label>').join('');
             return '<div data-topgroup>' +
-              '<label class="pruefreihe" style="margin:2px 0"><input type="checkbox" data-top="' + t.id + '"' +
+              '<label class="pruefreihe" style="margin:2px 0"><input type="checkbox" data-top="' + esc(t.id) + '"' +
               (topChecked ? ' checked' : '') + '> <b>TOP ' + (ti + 1) + ': ' + esc(t.titel || '(ohne Titel)') + '</b></label>' +
               subHtml + '</div>';
           }).join('') +

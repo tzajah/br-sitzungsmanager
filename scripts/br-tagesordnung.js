@@ -69,9 +69,7 @@ function renderAnlagenWidget(c, liste, beschriftung, nachAenderung) {
         const a = liste[i];
         const bytes = await anlageBytes(a);
         if (!bytes) return zeigeToast(anlageFehltMeldung(), 'fehler');
-        const url = URL.createObjectURL(new Blob([bytes], { type: a.mime || 'application/octet-stream' }));
-        window.open(url, '_blank');
-        setTimeout(() => URL.revokeObjectURL(url), 60000);
+        anlageAnsehen(bytes, a.mime, a.name);
       } else if (tu === 'laden') {
         const a = liste[i];
         dateiHerunterladen(new Blob([dataUrlZuBytes(a.dataUrl)], { type: a.mime || 'application/octet-stream' }), a.name);
