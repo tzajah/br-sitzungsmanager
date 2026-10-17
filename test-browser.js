@@ -1582,7 +1582,9 @@ async function pruefeAufraeumen() {
                            d2: bytesZuBase64(new Uint8Array(20000).fill(66)) },
         sitzungen: [{ id: 's1', nr: '01/2026',
           tops: [{ id: 't1', titel: 'TOP', anlagen: [{ id: 'a1', name: 'Anlage.pdf', dokumentId: 'd2' }],
-                   beschluesse: [{ id: 'b1', antrag: 'Wortlaut' }] }] }],
+                   beschluesse: [{ id: 'b1', antrag: 'Wortlaut' }],
+                   unterpunkte: [{ id: 'u1', anlagen: [{ id: 'a3', name: 'Alt.pdf', dataUrl: 'data:application/pdf;base64,' + 'A'.repeat(4000) }] }] }],
+          anlagenTO: [{ id: 'a2', name: 'Einladung.pdf', dataUrl: 'data:application/pdf;base64,' + 'B'.repeat(4000) }] }],
         exportOptionen: {}
       };
       const { iv, ct } = await Krypto.chiffriere(mk, nutzlast);
@@ -1605,13 +1607,17 @@ async function pruefeAufraeumen() {
         inhalte: Object.keys(p.dokumentInhalte || {}).length,
         verweise: (p.dokumente || []).map(x => x.name),
         anlageAmTop: p.sitzungen[0].tops[0].anlagen.map(a => a.name),
+        inlineRest: JSON.stringify(p.sitzungen).includes('dataUrl'),
+        inlineVerweise: [p.sitzungen[0].anlagenTO[0].name, p.sitzungen[0].tops[0].unterpunkte[0].anlagen[0].name],
         beschluss: p.sitzungen[0].tops[0].beschluesse[0].antrag,
         firma: p.stammdaten.firma, personen: p.personen.length, revision: p.revision
       };
     })()
   `);
   assert.strictEqual(bereinigt.name, 'BR-Sitzungen_Rev0005_ohne-Anlagen.brenc.json');
-  assert.strictEqual(bereinigt.statistik.anzahl, 2, 'beide Anlagen-Dateien entfernt');
+  assert.strictEqual(bereinigt.statistik.anzahl, 4, 'beide Anlagen-Dateien und die zwei Inline-Anlagen (dataUrl) entfernt');
+  assert.ok(!bereinigt.inlineRest, 'kein dataUrl mehr in den Sitzungen');
+  assert.deepStrictEqual(bereinigt.inlineVerweise, ['Einladung.pdf', 'Alt.pdf'], 'Inline-Anlagen bleiben als Verweis stehen');
   assert.ok(bereinigt.statistik.bytes > 70000, 'die eingesparte Menge wird beziffert');
   assert.strictEqual(bereinigt.statistik.verweise, 2, 'die Verweise werden gezählt');
   assert.ok(bereinigt.statistik.nachher < bereinigt.statistik.vorher / 2, 'die Datei schrumpft deutlich');

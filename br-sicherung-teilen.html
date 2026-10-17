@@ -199,6 +199,20 @@ el('los').onclick = async () => {
   }
 };
 
+/* Alt-Format: Dateien können auch als dataUrl direkt an der Anlage in den Sitzungen stehen (TOP, Unterpunkt, Einladung, Protokoll). */
+function inlineAnlagenEntfernen(sitzungen) {
+  const neu = JSON.parse(JSON.stringify(sitzungen || []));
+  let anzahl = 0, bytes = 0;
+  const weg = liste => (liste || []).forEach(a => {
+    if (a && a.dataUrl) { anzahl++; bytes += Math.floor(a.dataUrl.length * 3 / 4); delete a.dataUrl; }
+  });
+  neu.forEach(s => {
+    weg(s.anlagenTO); weg(s.anlagenProt);
+    (s.tops || []).forEach(t => { weg(t.anlagen); (t.unterpunkte || []).forEach(u => weg(u.anlagen)); });
+  });
+  return { sitzungen: neu, anzahl: anzahl, bytes: bytes };
+}
+
 /* Verschlüsselt beide Fassungen mit demselben Schlüsselmaterial, die Passwörter bleiben gültig. */
 async function aufteilen(datei, passwort) {
   let d;
@@ -243,10 +257,11 @@ async function aufteilen(datei, passwort) {
   /* Der eigentliche Schnitt: Anlagen-Bytes bleiben beim Sitzungsmanager, Metadaten stehen in beiden Dateien. */
   const inhalte = nutzlast.dokumentInhalte || {};
   const fuerSitzungsmanager = nutzlast;
-  const fuerProtokoll = Object.assign({}, nutzlast, { dokumentInhalte: {} });
+  const inline = inlineAnlagenEntfernen(nutzlast.sitzungen);
+  const fuerProtokoll = Object.assign({}, nutzlast, { dokumentInhalte: {}, sitzungen: inline.sitzungen });
 
-  const anzahlAnlagen = Object.keys(inhalte).length;
-  let anlagenBytes = 0;
+  const anzahlAnlagen = Object.keys(inhalte).length + inline.anzahl;
+  let anlagenBytes = inline.bytes;
   for (const id of Object.keys(inhalte)) anlagenBytes += Math.floor(inhalte[id].length * 3 / 4);
 
   const basis = (datei.name || 'BR-Sicherung').replace(/\.(brenc\.)?json$/i, '');

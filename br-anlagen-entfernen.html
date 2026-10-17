@@ -185,6 +185,20 @@ function fmtBytes(n) {
 const el = id => document.getElementById(id);
 
 /* Verschlüsselt die bereinigte Sicherung mit demselben Schlüsselmaterial wieder, die Passwörter bleiben gültig. */
+/* Alt-Format: Dateien können auch als dataUrl direkt an der Anlage in den Sitzungen stehen (TOP, Unterpunkt, Einladung, Protokoll). */
+function inlineAnlagenEntfernen(sitzungen) {
+  const neu = JSON.parse(JSON.stringify(sitzungen || []));
+  let anzahl = 0, bytes = 0;
+  const weg = liste => (liste || []).forEach(a => {
+    if (a && a.dataUrl) { anzahl++; bytes += Math.floor(a.dataUrl.length * 3 / 4); delete a.dataUrl; }
+  });
+  neu.forEach(s => {
+    weg(s.anlagenTO); weg(s.anlagenProt);
+    (s.tops || []).forEach(t => { weg(t.anlagen); (t.unterpunkte || []).forEach(u => weg(u.anlagen)); });
+  });
+  return { sitzungen: neu, anzahl: anzahl, bytes: bytes };
+}
+
 async function anlagenAusDatei(datei, passwort) {
   let d;
   try { d = JSON.parse(await datei.text()); }
@@ -224,12 +238,13 @@ async function anlagenAusDatei(datei, passwort) {
   }
 
   const inhalte = nutzlast.dokumentInhalte || {};
-  const anzahl = Object.keys(inhalte).length;
-  let bytes = 0;
+  const inline = inlineAnlagenEntfernen(nutzlast.sitzungen);
+  const anzahl = Object.keys(inhalte).length + inline.anzahl;
+  let bytes = inline.bytes;
   for (const id of Object.keys(inhalte)) bytes += Math.floor(inhalte[id].length * 3 / 4);
 
   /* Nur die Dateien entfernen – dokumente[] bleibt als Verweisliste stehen. */
-  const bereinigt = Object.assign({}, nutzlast, { dokumentInhalte: {} });
+  const bereinigt = Object.assign({}, nutzlast, { dokumentInhalte: {}, sitzungen: inline.sitzungen });
   const text = await neuVerpacken(bereinigt);
   const basis = (datei.name || 'BR-Sicherung').replace(/\.(brenc\.)?json$/i, '');
 

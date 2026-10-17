@@ -1372,8 +1372,8 @@ class PdfBuilder {
     const xPos = [this.xL];
     for (const b of breiten) xPos.push(xPos[xPos.length - 1] + b);
 
-    const zelleZeichnen = (txt, i, yTop, font, farbe, spalte) => {
-      const zl = this.zellenUmbruch(txt, font, size, breiten[i] - 2 * pad, spalte);
+    const zelleZeichnen = (txt, i, yTop, font, farbe, spalte, von, bis) => {
+      const zl = this.zellenUmbruch(txt, font, size, breiten[i] - 2 * pad, spalte).slice(von || 0, bis);
       let ty = yTop - pad - size;
       for (const z of zl) {
         if (!z) { ty -= lh; continue; }
@@ -1400,13 +1400,25 @@ class PdfBuilder {
     kopfZeichnen();
     for (const zeile of cfg.zeilen) {
       const zellZeilen = zeile.map((z, i) => this.zellenUmbruch(z, (cfg.spalten[i].fett ? this.f.fett : this.f.reg), size, breiten[i] - 2 * pad, cfg.spalten[i]));
-      const h = Math.max(cfg.minZeilenHoehe || 0, Math.max(1, ...zellZeilen.map(l => l.length)) * lh + 2 * pad);
-      if (this.y - h < this.rand.u) { this.neueSeite(); kopfZeichnen(); }
-      const yTop = this.y;
-      zeile.forEach((z, i) => zelleZeichnen(z, i, yTop, (cfg.spalten[i].fett ? this.f.fett : this.f.reg), this.c.ink, cfg.spalten[i]));
-      if (cfg.gitter) for (const x of xPos) this.seite.drawLine({ start: { x, y: yTop }, end: { x, y: yTop - h }, thickness: 0.5, color: this.c.linie });
-      this.y -= h;
-      this.seite.drawLine({ start: { x: this.xL, y: this.y }, end: { x: this.xR, y: this.y }, thickness: 0.5, color: cfg.gitter ? this.c.linie : this.c.linieHell });
+      const maxL = Math.max(1, ...zellZeilen.map(l => l.length));
+      let von = 0, frisch = false;
+      /* Zu hohe Zeilen werden zeilenweise auf Folgeseiten fortgesetzt (Kopf wird wiederholt). */
+      while (von < maxL) {
+        let n = maxL - von;
+        const h = Math.max(cfg.minZeilenHoehe || 0, n * lh + 2 * pad);
+        if (this.y - h < this.rand.u) {
+          if (!frisch) { this.neueSeite(); kopfZeichnen(); frisch = true; continue; }
+          n = Math.max(1, Math.floor((this.y - this.rand.u - 2 * pad) / lh));
+        }
+        const hh = n < maxL - von ? n * lh + 2 * pad : h;
+        const yTop = this.y;
+        zeile.forEach((z, i) => zelleZeichnen(z, i, yTop, (cfg.spalten[i].fett ? this.f.fett : this.f.reg), this.c.ink, cfg.spalten[i], von, von + n));
+        if (cfg.gitter) for (const x of xPos) this.seite.drawLine({ start: { x, y: yTop }, end: { x, y: yTop - hh }, thickness: 0.5, color: this.c.linie });
+        this.y -= hh;
+        this.seite.drawLine({ start: { x: this.xL, y: this.y }, end: { x: this.xR, y: this.y }, thickness: 0.5, color: cfg.gitter ? this.c.linie : this.c.linieHell });
+        von += n;
+        if (von < maxL) { this.neueSeite(); kopfZeichnen(); frisch = true; }
+      }
     }
     this.abstand(10);
   }

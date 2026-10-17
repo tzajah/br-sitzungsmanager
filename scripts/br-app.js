@@ -2041,7 +2041,7 @@ function dokumentTabelleZeichnen(c, rows, neuZeichnen) {
       (z.art === 'anlage' ? 'Die Anlage „' + z.name + '" wird aus der Sitzung entfernt.' : 'Das Dokument „' + z.name + '" wird gelöscht.'),
       async () => {
         if (z.art === 'dokument') { await dokumentEntfernen(z.ref.id); }
-        else { const idx = z.ref.container.indexOf(z.ref.a); if (idx >= 0) z.ref.container.splice(idx, 1); speichern(); }
+        else { const idx = z.ref.container.indexOf(z.ref.a); if (idx >= 0) z.ref.container.splice(idx, 1); if (z.sitzungId) dirtySitzungen.add(z.sitzungId); speichern(); }
         neuZeichnen();
       }, 'Löschen', true);
   });

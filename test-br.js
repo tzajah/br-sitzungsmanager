@@ -248,6 +248,20 @@ assert.deepStrictEqual(roh(pdfF.akzent).map(v => Math.round(v * 255)), [0x1F, 0x
 assert.deepStrictEqual(roh(pdfF.gruen), [0, 0.404, 0.243], '„angenommen" bleibt grün');
 console.log('OK  Erscheinungsbild: Akzentfarbe mit abgeleiteten Varianten, Kontrast gewahrt');
 
+/* PDF-Tabelle: eine Zeile, die höher als eine Seite ist, wird zeilenweise auf Folgeseiten fortgesetzt */
+{
+  const ys = [];
+  const font = { widthOfTextAtSize: () => 500 };
+  const doc = { addPage() { ys.push([]); const l = ys[ys.length - 1]; return { drawText(_, o) { l.push(o.y); }, drawLine() {}, drawRectangle() {} }; } };
+  const farbe = { kopfFuellung: 0, weiss: 0, linie: 0, linieHell: 0, ink: 0, grau: 0 };
+  const lang = Array.from({ length: 100 }, (_, i) => 'Zeile' + i).join('\n');
+  k['((doc, f, c, cfg) => { const b = new PdfBuilder(doc, { reg: f, fett: f }, c, {}, {}); b.neueSeite(); b.tabelle(cfg); })'](doc, font, farbe,
+    { spalten: [{ titel: 'A', anteil: 0.3 }, { titel: 'B', anteil: 0.7 }], zeilen: [['x', lang], ['y', 'kurz']], gitter: true });
+  assert.ok(ys.length >= 3, 'sehr lange Zeile verteilt sich auf mehrere Seiten');
+  assert.ok(Math.min(...ys.flat()) >= 68, 'nichts wird unter den unteren Seitenrand gezeichnet');
+}
+console.log('OK  PDF-Tabelle: überhohe Zeile läuft auf Folgeseiten weiter');
+
 /* Persistenz (br-app.js): Schreibreihenfolge, Schließen erst nach dem Speichern, Import atomar. IndexedDB ist durch einen Speicher-Stub ersetzt. */
 async function pruefePersistenz() {
   const ctx = vm.createContext({
