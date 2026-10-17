@@ -66,6 +66,8 @@ function ergebnisNutzlast(s) {
     sitzungId: s.id, nr: s.nr, datum: s.datum,
     vollstaendig: true,   /* alle Punkte, auch geleerte; ältere Dateien ohne Flag listen nur Punkte mit Inhalt */
     teilnahme: s.teilnahme || {},
+    /* Eingefrorene Besetzung reist mit, damit beide Module das Quorum gleich rechnen. */
+    ...(s.besetzung ? { besetzung: s.besetzung } : {}),
     beginnTatsaechlich: s.beginnTatsaechlich || '',
     endeTatsaechlich: s.endeTatsaechlich || '',
     punkte: punkte
@@ -143,6 +145,7 @@ function ergebnisseEinspielen(sitzung, nutzlast) {
     bilanz.aufgaben += ziel.aufgaben.length;
   }
   sitzung.teilnahme = nutzlast.teilnahme || {};
+  if (nutzlast.besetzung) sitzung.besetzung = nutzlast.besetzung;
   /* Nur mit vollstaendig ist leer = geleert; ältere Dateien können „geleert" nicht von „nie gesetzt" unterscheiden. */
   if (nutzlast.vollstaendig || nutzlast.beginnTatsaechlich) sitzung.beginnTatsaechlich = nutzlast.beginnTatsaechlich || '';
   if (nutzlast.vollstaendig || nutzlast.endeTatsaechlich) sitzung.endeTatsaechlich = nutzlast.endeTatsaechlich || '';

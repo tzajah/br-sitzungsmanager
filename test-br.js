@@ -204,6 +204,11 @@ console.log('OK  Geplante Anwesenheit und Gästeliste reisen mit, überschreiben
   k.ergebnisseEinspielen(alt, ohneFlag);
   assert.strictEqual(alt.tops[1].beschluesse.length, 1, 'ältere Datei: nicht gelistete TOPs bleiben unberührt');
   assert.strictEqual(alt.beginnTatsaechlich, '16:00', 'ältere Datei: leere Zeit überschreibt nicht');
+
+  const prot = lokal(); prot.besetzung = { am: '2026-01-01', groesse: 3, mitglieder: [] };
+  const ziel = lokal();
+  k.ergebnisseEinspielen(ziel, k.ergebnisNutzlast(prot));
+  assert.strictEqual(ziel.besetzung && ziel.besetzung.groesse, 3, 'eingefrorene Besetzung reist mit der Übergabe');
   console.log('OK  Ergebnisübergabe: Status bleibt, geleerte Punkte/Zeiten werden übernommen, alte Dateien schonend');
 }
 
