@@ -209,6 +209,9 @@ console.log('OK  Geplante Anwesenheit und Gästeliste reisen mit, überschreiben
   const ziel = lokal();
   k.ergebnisseEinspielen(ziel, k.ergebnisNutzlast(prot));
   assert.strictEqual(ziel.besetzung && ziel.besetzung.groesse, 3, 'eingefrorene Besetzung reist mit der Übergabe');
+  delete prot.besetzung;
+  k.ergebnisseEinspielen(ziel, k.ergebnisNutzlast(prot));
+  assert.strictEqual(ziel.besetzung, undefined, 'wieder geöffnetes Protokoll hebt die Besetzung auch im Manager auf');
   console.log('OK  Ergebnisübergabe: Status bleibt, geleerte Punkte/Zeiten werden übernommen, alte Dateien schonend');
 }
 
