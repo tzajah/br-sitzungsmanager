@@ -1038,10 +1038,14 @@ function aktualisiereRollenUi() {
 async function sperren() {
   clearTimeout(speicherTimer);
   /* Schlüssel erst nach dem Schreiben verwerfen; scheitert es, bleibt die Datei offen, statt Änderungen still zu verlieren. */
-  if (darfBearbeiten() && (await speichern(true)) === false) {
-    zeigeToast('Ungespeicherte Änderungen konnten nicht gespeichert werden – die Datei bleibt geöffnet. Bitte über „Sichern (Datei)" sichern.', 'fehler');
-    return;
-  }
+  /* Schleife: Änderungen, die während des Schreibens entstehen, werden ebenfalls noch geschrieben. */
+  if (darfBearbeiten()) do {
+    clearTimeout(speicherTimer);
+    if ((await speichern(true)) === false) {
+      zeigeToast('Ungespeicherte Änderungen konnten nicht gespeichert werden – die Datei bleibt geöffnet. Bitte über „Sichern (Datei)" sichern.', 'fehler');
+      return;
+    }
+  } while (dirtyMeta || dirtySitzungen.size);
   sitzungVergessen();
   sitzungsSchluessel = null; sitzungsMkBytes = null;
   sitzungsRolle = null; ui.rolle = null;
