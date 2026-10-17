@@ -211,7 +211,7 @@ console.log('OK  Geplante Anwesenheit und Gästeliste reisen mit, überschreiben
   assert.strictEqual(ziel.besetzung && ziel.besetzung.groesse, 3, 'eingefrorene Besetzung reist mit der Übergabe');
   delete prot.besetzung;
   k.ergebnisseEinspielen(ziel, k.ergebnisNutzlast(prot));
-  assert.strictEqual(ziel.besetzung, undefined, 'wieder geöffnetes Protokoll hebt die Besetzung auch im Manager auf');
+  assert.strictEqual(ziel.besetzung, null, 'wieder geöffnetes Protokoll hebt die Besetzung auch im Manager auf (null = nicht nachtragen)');
   console.log('OK  Ergebnisübergabe: Status bleibt, geleerte Punkte/Zeiten werden übernommen, alte Dateien schonend');
 }
 

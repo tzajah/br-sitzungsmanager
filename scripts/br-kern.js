@@ -145,9 +145,10 @@ function ergebnisseEinspielen(sitzung, nutzlast) {
     bilanz.aufgaben += ziel.aufgaben.length;
   }
   sitzung.teilnahme = nutzlast.teilnahme || {};
-  /* Vollständige Dateien gleichen auch das Fehlen ab (Protokoll wieder geöffnet). */
+  /* Vollständige Dateien gleichen auch das Fehlen ab (Protokoll wieder geöffnet). null = bewusst aufgehoben,
+     damit migriere() nicht wie bei Altdaten nachträgt. */
   if (nutzlast.besetzung) sitzung.besetzung = nutzlast.besetzung;
-  else if (nutzlast.vollstaendig) delete sitzung.besetzung;
+  else if (nutzlast.vollstaendig) sitzung.besetzung = null;
   /* Nur mit vollstaendig ist leer = geleert; ältere Dateien können „geleert" nicht von „nie gesetzt" unterscheiden. */
   if (nutzlast.vollstaendig || nutzlast.beginnTatsaechlich) sitzung.beginnTatsaechlich = nutzlast.beginnTatsaechlich || '';
   if (nutzlast.vollstaendig || nutzlast.endeTatsaechlich) sitzung.endeTatsaechlich = nutzlast.endeTatsaechlich || '';

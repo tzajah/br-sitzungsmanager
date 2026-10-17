@@ -317,7 +317,7 @@ async function allesLaden() {
   const sitzungen = [];
   for (const rec of roh) sitzungen.push(await Krypto.dechiffriere(sitzungsSchluessel, rec.iv, rec.ct));
   /* migriere() trägt fehlende Besetzungs-Schnappschüsse nach – diese Sitzungen einmal zurückschreiben (sitzungFortsetzen). */
-  sitzungen.forEach(s => { if (s.status === 'abgeschlossen' && !s.besetzung) dirtySitzungen.add(s.id); });
+  sitzungen.forEach(s => { if (s.status === 'abgeschlossen' && s.besetzung === undefined) dirtySitzungen.add(s.id); });
   return migriere({
     app: 'br-sitzungsmanager', version: appmeta.version || 1,
     revision: appmeta.revision || 0, zuletztGesichert: appmeta.zuletztGesichert || null,
@@ -431,7 +431,7 @@ function migriere(d) {
     s.anlagenProt = s.anlagenProt || [];
     /* Abgeschlossen vor Einführung des Schnappschusses: Besetzung aus dem heutigen Stand nachtragen – nur bei echten Personendaten,
        nicht bei Teildaten aus Übergabe/Gremium (dort fehlen die Personen). */
-    if (s.status === 'abgeschlossen' && !s.besetzung && d.personen.length) besetzungEinfrieren(d, s);
+    if (s.status === 'abgeschlossen' && s.besetzung === undefined && d.personen.length) besetzungEinfrieren(d, s);
     return s;
   });
   return d;
