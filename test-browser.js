@@ -359,6 +359,43 @@ async function pruefeAltbestand() {
   console.log('OK  Alte Sicherungen (Klartext, enc-v2 ohne Kategorien) migrieren verlustfrei');
 }
 
+/* Abschließen friert die Besetzung ein; migriere() trägt sie für alte abgeschlossene Sitzungen nach – nur bei echten Personendaten */
+async function pruefeBesetzung() {
+  const browser = await chromium.launch();
+  const seite = await browser.newPage();
+  const fehler = [];
+  seite.on('pageerror', e => fehler.push(e.message));
+  await seite.goto(DATEI('BR-Sitzungsmanager.html'));
+  await seite.waitForFunction('typeof APP_MODUS !== "undefined"', null, { timeout: 5000 });
+  await seite.evaluate(AUFBAU);
+  const r = await seite.evaluate(`
+    (() => {
+      const s = aktSitzung();
+      s.teilnahme = { m1: { status: 'anwesend' }, m2: { status: 'anwesend' } };
+      daten.stammdaten.gremiumGroesse = '3';
+      renderAlles();
+      const sel = () => document.querySelector('#kStatus');
+      sel().value = 'abgeschlossen'; sel().dispatchEvent(new Event('change'));
+      const zu = s.besetzung && { groesse: s.besetzung.groesse, ids: s.besetzung.mitglieder.map(m => m.id), am: !!s.besetzung.am };
+      renderAlles();
+      sel().value = 'entwurf'; sel().dispatchEvent(new Event('change'));
+      const wieder = 'besetzung' in s;
+      const altSitzung = () => ({ id: 's9', status: 'abgeschlossen', teilnahme: { m1: { status: 'anwesend' } }, tops: [] });
+      const voll = migriere({ app: 'br-sitzungsmanager', version: 1, personen: daten.personen.map(p => Object.assign({}, p)),
+                              stammdaten: { gremiumGroesse: '5' }, sitzungen: [altSitzung()] }).sitzungen[0].besetzung;
+      const teil = migriere({ app: 'br-sitzungsmanager', version: 1, sitzungen: [altSitzung()] }).sitzungen[0].besetzung;
+      return { zu, wieder, voll: voll && { groesse: voll.groesse, n: voll.mitglieder.length }, teil: teil || null };
+    })()
+  `);
+  assert.deepStrictEqual(r.zu, { groesse: 3, ids: ['m1', 'm2', 'm3'], am: true }, 'Abschließen legt s.besetzung an');
+  assert.strictEqual(r.wieder, false, 'Wieder öffnen entfernt den Schnappschuss');
+  assert.deepStrictEqual(r.voll, { groesse: 5, n: 3 }, 'migriere trägt die Besetzung alter abgeschlossener Sitzungen nach');
+  assert.strictEqual(r.teil, null, 'Teildaten (Übergabe) ohne Personen bekommen keinen Schnappschuss');
+  assert.deepStrictEqual(fehler, [], 'keine Laufzeitfehler');
+  await browser.close();
+  console.log('OK  Besetzung wird beim Abschließen eingefroren und für Altbestand nachgetragen');
+}
+
 /* Getrennte Speicherstände und die Sitzungs-Übergabe */
 async function pruefeUebergabe() {
   const browser = await chromium.launch();
@@ -560,8 +597,9 @@ async function pruefeUebergabe() {
       return { nutzlast: n, felder: Object.keys(n).sort(), roh: JSON.stringify(n) };
     })()
   `);
-  assert.deepStrictEqual(erg.felder, ['beginnTatsaechlich', 'datum', 'endeTatsaechlich', 'nr', 'punkte', 'sitzungId', 'teilnahme']);
-  assert.strictEqual(erg.nutzlast.punkte.length, 1, 'nur Punkte mit Inhalt');
+  assert.deepStrictEqual(erg.felder, ['beginnTatsaechlich', 'datum', 'endeTatsaechlich', 'nr', 'punkte', 'sitzungId', 'teilnahme', 'vollstaendig']);
+  assert.strictEqual(erg.nutzlast.vollstaendig, true);
+  assert.ok(erg.nutzlast.punkte.length > 1, 'alle Punkte, auch ohne Inhalt');
   assert.ok(!erg.roh.includes('Geplanter TOP'), 'keine Tagesordnung im Rückweg');
   assert.ok(!erg.roh.includes('Schon protokolliert'), 'kein Verlauf im Rückweg – der bleibt im Protokoll');
   assert.ok(erg.roh.includes('Der BR beschliesst X.') && erg.roh.includes('Schreiben aufsetzen'));
@@ -605,6 +643,20 @@ async function pruefeUebergabe() {
   assert.strictEqual(rueck.angenommen, true, '5 Ja bei 3 Teilnehmenden – angenommen');
   assert.strictEqual(rueck.aufgabenUebersicht, 1, 'die Aufgabe erscheint in der gremiumsweiten Übersicht');
   assert.strictEqual(rueck.schreibvorgaenge, 2);
+
+  /* Status im Manager ändern → erneute Übergabe → Status bleibt, Antrag kommt aus dem Protokoll */
+  const nochmal = await sm.evaluate(`
+    (async () => {
+      daten.sitzungen.find(x => x.id === 'S-ID').tops[0].beschluesse[0].status = 'zugestellt';
+      const nutzlast = ${JSON.stringify(erg.nutzlast)};
+      nutzlast.punkte[0].beschluesse[0].antrag = 'Geändert im Protokoll.';
+      await ergebnisseUebernehmen(nutzlast);
+      const b = daten.sitzungen.find(x => x.id === 'S-ID').tops[0].beschluesse[0];
+      return { status: b.status, antrag: b.antrag };
+    })()
+  `);
+  assert.strictEqual(nochmal.status, 'zugestellt', 'Umsetzungsstatus überlebt die erneute Übergabe');
+  assert.strictEqual(nochmal.antrag, 'Geändert im Protokoll.');
 
   const meldungen = async (p, faelle) => p.evaluate(`
     (async () => {
@@ -2459,6 +2511,7 @@ async function pruefeProtokollInhalt() {
   await pruefe('BR-Protokoll.html', 'protokoll');
   await pruefeFeatures();
   await pruefeAltbestand();
+  await pruefeBesetzung();
   await pruefeUebergabe();
   await pruefeStandardUnterpunkte();
   await pruefeUrlaubEditor();

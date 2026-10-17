@@ -316,6 +316,8 @@ async function allesLaden() {
   const roh = await Speicher.sitzungenAlle();
   const sitzungen = [];
   for (const rec of roh) sitzungen.push(await Krypto.dechiffriere(sitzungsSchluessel, rec.iv, rec.ct));
+  /* migriere() trägt fehlende Besetzungs-Schnappschüsse nach – diese Sitzungen einmal zurückschreiben (sitzungFortsetzen). */
+  sitzungen.forEach(s => { if (s.status === 'abgeschlossen' && !s.besetzung) dirtySitzungen.add(s.id); });
   return migriere({
     app: 'br-sitzungsmanager', version: appmeta.version || 1,
     revision: appmeta.revision || 0, zuletztGesichert: appmeta.zuletztGesichert || null,
@@ -351,6 +353,8 @@ async function sitzungFortsetzen() {
     sitzungsSchluessel = await Krypto.mkAusBytes(sitzungsMkBytes);
     sitzungsRolle = g.rolle; ui.rolle = g.rolle;
     daten = await allesLaden();
+    if (darfBearbeiten() && daten.sitzungen.some(s => dirtySitzungen.has(s.id) && s.besetzung)) flushSpeicher();
+    else dirtySitzungen.clear();
     return true;
   } catch (e) {
     console.warn('Gemerkte Sitzung ließ sich nicht fortsetzen:', e);
@@ -425,6 +429,9 @@ function migriere(d) {
     s.gaeste = (s.gaeste || []).map(g => { g.tops = Array.isArray(g.tops) ? g.tops : []; return g; });
     s.anlagenTO = s.anlagenTO || [];
     s.anlagenProt = s.anlagenProt || [];
+    /* Abgeschlossen vor Einführung des Schnappschusses: Besetzung aus dem heutigen Stand nachtragen – nur bei echten Personendaten,
+       nicht bei Teildaten aus Übergabe/Gremium (dort fehlen die Personen). */
+    if (s.status === 'abgeschlossen' && !s.besetzung && d.personen.length) besetzungEinfrieren(d, s);
     return s;
   });
   return d;
@@ -773,14 +780,24 @@ function ergebnisseRueckfrage(p, vermerk) {
   const bilanz = ergebnisseEinspielen(probe, p);
   const teile = ['Für Sitzung Nr. ' + (ziel.nr || '') + ' werden ' + bilanz.beschluesse +
     ' Beschluss/Beschlüsse und ' + bilanz.aufgaben + ' Aufgabe(n) zu ' + bilanz.punkte +
-    ' Punkt(en) übernommen; die bisherigen dort werden ersetzt.'];
+    ' Punkt(en) übernommen. Der Umsetzungsstatus aus dem Sitzungsmanager bleibt erhalten.'];
+  const ent = bilanz.entfallen;
+  if (ent.beschluesse.length || ent.aufgaben.length) {
+    teile.push(ent.beschluesse.length + ' Beschluss/Beschlüsse und ' + ent.aufgaben.length +
+      ' Aufgabe(n) wurden im Protokoll entfernt und entfallen hier.');
+  }
+  /* Entfallende Einträge mit schon gepflegtem Status wären ein stiller Verlust – dann ausdrücklich bestätigen lassen. */
+  const gepflegt = ent.beschluesse.some(b => b.status && b.status !== 'in_arbeit') ||
+                   ent.aufgaben.some(a => a.status === 'erledigt');
+  if (gepflegt) teile.push('ACHTUNG: Darunter sind Einträge mit bereits gepflegtem Umsetzungsstatus.');
+  if (!p.vollstaendig) teile.push('Hinweis: ältere Protokollversion – geleerte Punkte werden nicht erkannt.');
   if (bilanz.unbekannt.length) {
     teile.push('ACHTUNG: ' + bilanz.unbekannt.length + ' Punkt(e) aus der Datei gibt es hier nicht mehr – deren Ergebnisse gehen verloren.');
   }
   teile.push('Die Teilnahme wird mit übernommen, damit die Beschluss-Übersicht richtig auswertet.');
   teile.push(vermerk);
   bestaetigen('Ergebnisse übernehmen?', teile.join(' '),
-    () => ergebnisseUebernehmen(p), 'Übernehmen', bilanz.unbekannt.length > 0);
+    () => ergebnisseUebernehmen(p), 'Übernehmen', bilanz.unbekannt.length > 0 || gepflegt);
 }
 
 async function ergebnisseUebernehmen(p) {
@@ -1486,7 +1503,12 @@ function renderHaupt() {
   const stSel = c.querySelector('#kStatus');
   stSel.value = s.status || 'entwurf';
   stSel.disabled = !darfBearbeiten();
-  stSel.onchange = () => { s.status = stSel.value; speichern(); renderSeitenleiste(); };
+  stSel.onchange = () => {
+    s.status = stSel.value;
+    /* Abschließen friert Besetzung und Gremiumgröße ein; wieder geöffnet rechnet die Sitzung live. */
+    if (s.status === 'abgeschlossen') besetzungEinfrieren(daten, s); else delete s.besetzung;
+    speichern(); renderSeitenleiste();
+  };
   if (sitzungsAktionen) {
     c.querySelector('#kDuplizieren').onclick = () => sitzungDuplizieren(s);
     c.querySelector('#kArchiv').onclick = () => {
@@ -2330,7 +2352,7 @@ function urlaubHinweisHtml(datum) {
 
 /* Anwesenheitstabelle auf gemeinsamem Feld `s.teilnahme`: „Einladung" plant vor, „Protokoll" dokumentiert. `beiAenderung` läuft nach jeder Statusänderung (Beschlussfähigkeit neu rechnen). */
 function anwesenheitTabelle(el, s, beiAenderung) {
-  const mitglieder = aktiveMitglieder(daten);
+  const mitglieder = besetzungVon(daten, s);
   if (!mitglieder.length) {
     el.innerHTML = '<div class="hinweis warnung">Es sind noch keine Mitglieder erfasst. Bitte zuerst im <b>Admin-Menü</b> (links unten, Reiter „Personen") die Mitgliederliste anlegen – daraus entstehen Anwesenheitsliste und Teilnahmeübersicht.</div>';
     return mitglieder;
@@ -2349,6 +2371,7 @@ function anwesenheitTabelle(el, s, beiAenderung) {
   if (vorbelegt) speichern();
 
   el.innerHTML =
+    (s.besetzung ? '<div class="klein-grau" style="margin-bottom:6px">Besetzung vom ' + esc(fmtDatum(s.besetzung.am)) + ' eingefroren (Sitzung abgeschlossen).</div>' : '') +
     (Object.keys(urlaubJe).length
       ? '<div class="hinweis warnung" style="margin-top:0"><b>Urlaubskalender:</b> ' + Object.keys(urlaubJe).length +
         ' Mitglied(er) sind am Sitzungstag abwesend' +
@@ -2591,14 +2614,14 @@ function renderTabSitzung(c, s) {
     '<div class="raster s2" style="margin-top:14px">' +
       '<div class="feld"><label for="fLeitung">Sitzungsleitung</label>' +
         '<select id="fLeitung">' +
-          '<option value="">— ' + esc(vorsitzName(daten) || 'Vorsitzende/r') + ' (Vorsitz aus Stammdaten) —</option>' +
+          '<option value="">— ' + esc(vorsitzName(daten, s) || 'Vorsitzende/r') + ' (Vorsitz aus Stammdaten) —</option>' +
           aktiveMitglieder(daten).map(m => '<option value="' + esc(m.name) + '"' + (s.sitzungsleitung === m.name ? ' selected' : '') + '>' +
             esc(m.name) + (m.funktion && m.funktion !== 'Mitglied' ? ' (' + esc(m.funktion) + ')' : '') + '</option>').join('') +
           ((s.sitzungsleitung || '').trim() && !aktiveMitglieder(daten).some(m => m.name === s.sitzungsleitung)
             ? '<option value="' + esc(s.sitzungsleitung) + '" selected>' + esc(s.sitzungsleitung) + '</option>' : '') +
         '</select>' +
         '<span class="feldhinweis">leer = Vorsitzende/r aus den Stammdaten</span></div>' +
-      feldHtml('fProtokoll', 'Protokollführung', 'text', 'placeholder="' + esc(schriftfuehrerName(daten) || 'Weiteres Mitglied') + '"', 'unterzeichnet als weiteres Mitglied') +
+      feldHtml('fProtokoll', 'Protokollführung', 'text', 'placeholder="' + esc(schriftfuehrerName(daten, s) || 'Weiteres Mitglied') + '"', 'unterzeichnet als weiteres Mitglied') +
     '</div>' +
     '</div></div>' +
     '<div id="urlaubHinweis"></div>' +

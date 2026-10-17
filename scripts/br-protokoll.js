@@ -401,7 +401,7 @@ function beschlussBlock(s, top, b, bi, neuZeichnen, updater) {
     '</select></div></div>' +
     '<div class="feld" style="margin-top:10px;max-width:240px"><label>Status (Umsetzung)</label><select data-f="status">' +
       Object.keys(BESCHLUSS_STATUS).map(k => '<option value="' + k + '">' + BESCHLUSS_STATUS[k] + '</option>').join('') +
-    '</select></div>' +
+    '</select><div class="klein-grau">Startwert – wird im Sitzungsmanager weitergeführt</div></div>' +
     '<details class="bb-beteiligung" style="margin-top:10px"><summary data-beteiligung-titel></summary>' +
       '<p class="klein-grau" style="margin:6px 0">Anwesende Mitglieder, die an dieser Abstimmung nicht teilnehmen – etwa weil sie selbst betroffen und deshalb nicht stimmberechtigt sind oder den Raum verlassen haben. Die Mehrheit wird dann nur aus den Beteiligten berechnet.</p>' +
       '<div data-beteiligung></div></details>' +

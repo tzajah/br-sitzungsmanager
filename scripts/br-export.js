@@ -9,7 +9,7 @@ function pdfDateiname(praefix, s) {
 
 function exportPruefungen(s) {
   const p = [];
-  if (!aktiveMitglieder(daten).length) p.push('Es sind keine Mitglieder erfasst (Admin-Menü → „Personen") – Anwesenheitsliste und Teilnahmeübersicht bleiben leer.');
+  if (!besetzungVon(daten, s).length) p.push('Es sind keine Mitglieder erfasst (Admin-Menü → „Personen") – Anwesenheitsliste und Teilnahmeübersicht bleiben leer.');
   if (!s.datum) p.push('Die Sitzung hat noch kein Datum.');
   if (!s.tops.length) p.push('Die Tagesordnung enthält noch keine Punkte.');
   const q = quorumInfo(daten, s);
@@ -187,7 +187,7 @@ function einladungVolltext(daten, s) {
   }
   z.push('');
   z.push('Mit freundlichen Grüßen');
-  const grussName = s.sitzungsleitung || vorsitzName(daten) || '';
+  const grussName = s.sitzungsleitung || vorsitzName(daten, s) || '';
   if (grussName) z.push(grussName);
   z.push(sitzungsleitungRolle(daten, s));
   return z.join('\r\n');
@@ -278,7 +278,7 @@ function einladungHtml(daten, s, mitLogo) {
   h += grau('Verhinderte Mitglieder werden gebeten, dies unverzüglich der/dem Vorsitzenden mitzuteilen, damit das jeweilige Ersatzmitglied geladen werden kann.');
   if (s.einladungHinweis) h += grau(txt(s.einladungHinweis));
 
-  const grussName = s.sitzungsleitung || vorsitzName(daten) || '';
+  const grussName = s.sitzungsleitung || vorsitzName(daten, s) || '';
   h += absatz('Mit freundlichen Grüßen', 'margin-top:18px;margin-bottom:18px');
   if (grussName) h += absatz(esc(grussName), 'margin-bottom:0');
   h += grau(esc(sitzungsleitungRolle(daten, s)));
@@ -374,7 +374,7 @@ function protokollFertigEmpfaenger(daten, s) {
   return Array.from(map.values());
 }
 function protokollAbsender(daten, s) {
-  const name = ((s.protokollfuehrung || '').trim()) || schriftfuehrerName(daten) || '';
+  const name = ((s.protokollfuehrung || '').trim()) || schriftfuehrerName(daten, s) || '';
   let email = '';
   if (name) {
     const p = personenDerGruppe(daten, 'br').find(m => (m.name || '').trim().toLowerCase() === name.toLowerCase());
@@ -925,7 +925,14 @@ function oeffneStammdaten() {
       bindePruef(zeile.querySelector('[data-f="aktiv"]'), () => p.aktiv !== false, v => { p.aktiv = v; });
       zeile.querySelectorAll('[data-tu]').forEach(btn => btn.onclick = () => {
         const tu = btn.dataset.tu;
-        if (tu === 'weg') { daten.personen.splice(i, 1); speichern(); renderGruppe(g); return; }
+        if (tu === 'weg') {
+          const weg = () => { const k = daten.personen.indexOf(p); if (k >= 0) daten.personen.splice(k, 1); speichern(); renderGruppe(g); };
+          /* Mit erfasster Teilnahme fehlt die Person sonst in der Anwesenheit offener Sitzungen – Deaktivieren erhält sie. */
+          if (daten.sitzungen.some(s => ((s.teilnahme || {})[p.id] || {}).status)) {
+            bestaetigen('Person löschen?', (p.name || 'Diese Person') + ' ist in mindestens einer Sitzung als Teilnehmer/in erfasst. Empfohlen ist, die Person stattdessen zu deaktivieren (Haken „aktiv" entfernen). Trotzdem endgültig löschen?', weg, 'Trotzdem löschen', true);
+          } else weg();
+          return;
+        }
         const gi = liste.indexOf(p);
         if (tu === 'hoch' && gi > 0) { personenTauschen(p, liste[gi - 1]); speichern(); renderGruppe(g); }
         else if (tu === 'runter' && gi < liste.length - 1) { personenTauschen(p, liste[gi + 1]); speichern(); renderGruppe(g); }

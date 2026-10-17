@@ -59,12 +59,12 @@ function tagesordnungNutzlast(s) {
 function ergebnisNutzlast(s) {
   const punkte = [];
   const sammle = p => {
-    const beschluesse = p.beschluesse || [], aufgaben = p.aufgaben || [];
-    if (beschluesse.length || aufgaben.length) punkte.push({ id: p.id, beschluesse: beschluesse, aufgaben: aufgaben });
+    punkte.push({ id: p.id, beschluesse: p.beschluesse || [], aufgaben: p.aufgaben || [] });
   };
   (s.tops || []).forEach(t => { sammle(t); (t.unterpunkte || []).forEach(sammle); });
   return {
     sitzungId: s.id, nr: s.nr, datum: s.datum,
+    vollstaendig: true,   /* alle Punkte, auch geleerte; ältere Dateien ohne Flag listen nur Punkte mit Inhalt */
     teilnahme: s.teilnahme || {},
     beginnTatsaechlich: s.beginnTatsaechlich || '',
     endeTatsaechlich: s.endeTatsaechlich || '',
@@ -115,8 +115,19 @@ function tagesordnungEinspielen(alt, neu) {
   return bilanz;
 }
 
+/* Liste aus der Datei übernehmen (Reihenfolge, alle Felder), nur den Umsetzungsstatus behält der Sitzungsmanager; lokale Einträge, die in der Datei fehlen, landen in entfallen. */
+function ergebnisListeMischen(lokal, datei, entfallen) {
+  const alt = new Map((lokal || []).filter(x => x.id).map(x => [x.id, x]));
+  const dateiIds = new Set((datei || []).map(x => x.id).filter(Boolean));
+  (lokal || []).forEach(x => { if (!dateiIds.has(x.id)) entfallen.push(x); });
+  return (datei || []).map(x => {
+    const v = x.id && alt.get(x.id);
+    return v && v.status !== undefined ? Object.assign({}, x, { status: v.status }) : x;
+  });
+}
+
 function ergebnisseEinspielen(sitzung, nutzlast) {
-  const bilanz = { punkte: 0, beschluesse: 0, aufgaben: 0, unbekannt: [] };
+  const bilanz = { punkte: 0, beschluesse: 0, aufgaben: 0, unbekannt: [], entfallen: { beschluesse: [], aufgaben: [] } };
   const punkte = new Map();
   (sitzung.tops || []).forEach(t => {
     punkte.set(t.id, t);
@@ -125,15 +136,16 @@ function ergebnisseEinspielen(sitzung, nutzlast) {
   for (const e of (nutzlast.punkte || [])) {
     const ziel = punkte.get(e.id);
     if (!ziel) { bilanz.unbekannt.push(e.id); continue; }
-    ziel.beschluesse = e.beschluesse || [];
-    ziel.aufgaben = e.aufgaben || [];
+    ziel.beschluesse = ergebnisListeMischen(ziel.beschluesse, e.beschluesse, bilanz.entfallen.beschluesse);
+    ziel.aufgaben = ergebnisListeMischen(ziel.aufgaben, e.aufgaben, bilanz.entfallen.aufgaben);
     bilanz.punkte++;
     bilanz.beschluesse += ziel.beschluesse.length;
     bilanz.aufgaben += ziel.aufgaben.length;
   }
   sitzung.teilnahme = nutzlast.teilnahme || {};
-  if (nutzlast.beginnTatsaechlich) sitzung.beginnTatsaechlich = nutzlast.beginnTatsaechlich;
-  if (nutzlast.endeTatsaechlich) sitzung.endeTatsaechlich = nutzlast.endeTatsaechlich;
+  /* Nur mit vollstaendig ist leer = geleert; ältere Dateien können „geleert" nicht von „nie gesetzt" unterscheiden. */
+  if (nutzlast.vollstaendig || nutzlast.beginnTatsaechlich) sitzung.beginnTatsaechlich = nutzlast.beginnTatsaechlich || '';
+  if (nutzlast.vollstaendig || nutzlast.endeTatsaechlich) sitzung.endeTatsaechlich = nutzlast.endeTatsaechlich || '';
   return bilanz;
 }
 function modusHatReiter(id) { return modusReiter().includes(id); }
@@ -698,10 +710,40 @@ function personenTauschen(a, b) {
   const t = daten.personen[ia]; daten.personen[ia] = daten.personen[ib]; daten.personen[ib] = t;
 }
 
-function vorsitzName(daten) {
-  const v = aktiveMitglieder(daten).find(m => m.funktion === 'Vorsitzende/r');
+/* Abgeschlossene Sitzung: eingefrorene Besetzung statt der heutigen Mitgliederliste (Funktionen von damals). */
+function mitgliederVon(daten, s) {
+  return s && s.besetzung ? s.besetzung.mitglieder : aktiveMitglieder(daten);
+}
+
+/* Wer zur Sitzung gehört: eingefrorene Besetzung bzw. heute aktive Mitglieder – plus jede BR-Person mit erfasster Teilnahme
+   (auch inzwischen deaktiviert). Teilnahme ohne Person (gelöscht, kein Schnappschuss) zählt weiter, damit das Quorum stimmt. */
+function besetzungVon(daten, s) {
+  const liste = mitgliederVon(daten, s).slice();
+  const ids = new Set(liste.map(m => m.id));
+  const tn = (s && s.teilnahme) || {};
+  const mitStatus = id => !ids.has(id) && !!((tn[id] || {}).status);
+  for (const p of personenDerGruppe(daten, 'br')) if (mitStatus(p.id)) { liste.push(p); ids.add(p.id); }
+  for (const id of Object.keys(tn)) {
+    if (!mitStatus(id) || (daten.personen || []).some(p => p.id === id)) continue;
+    liste.push({ id, name: '(gelöschtes Mitglied)', funktion: '' }); ids.add(id);
+  }
+  return liste;
+}
+
+/* Beim Abschließen: Gremiumgröße und Besetzung festhalten, damit spätere Personaländerungen das Protokoll nicht verändern. */
+function besetzungEinfrieren(daten, s) {
+  delete s.besetzung;
+  const groesse = quorumInfo(daten, s).groesse;
+  s.besetzung = {
+    am: heuteIso(), groesse,
+    mitglieder: besetzungVon(daten, s).map(m => ({ id: m.id, name: m.name || '', funktion: m.funktion || '' }))
+  };
+}
+
+function vorsitzName(daten, s) {
+  const v = mitgliederVon(daten, s).find(m => m.funktion === 'Vorsitzende/r');
   if (v) return v.name;
-  const sv = aktiveMitglieder(daten).find(m => m.funktion === 'Stellv. Vorsitzende/r');
+  const sv = mitgliederVon(daten, s).find(m => m.funktion === 'Stellv. Vorsitzende/r');
   return sv ? sv.name : '';
 }
 
@@ -709,20 +751,20 @@ function sitzungsleitungRolle(daten, s) {
   const leit = (s.sitzungsleitung || '').trim();
   let funktion = '';
   if (leit) {
-    const p = aktiveMitglieder(daten).find(m => (m.name || '').trim() === leit);
+    const p = mitgliederVon(daten, s).find(m => (m.name || '').trim() === leit);
     funktion = p ? p.funktion : '';
   } else {
-    const v = aktiveMitglieder(daten).find(m => m.funktion === 'Vorsitzende/r');
+    const v = mitgliederVon(daten, s).find(m => m.funktion === 'Vorsitzende/r');
     funktion = v ? 'Vorsitzende/r'
-      : (aktiveMitglieder(daten).find(m => m.funktion === 'Stellv. Vorsitzende/r') ? 'Stellv. Vorsitzende/r' : 'Vorsitzende/r');
+      : (mitgliederVon(daten, s).find(m => m.funktion === 'Stellv. Vorsitzende/r') ? 'Stellv. Vorsitzende/r' : 'Vorsitzende/r');
   }
   if (funktion === 'Stellv. Vorsitzende/r') return 'Stellv. Vorsitzende/r des Betriebsrats';
   if (funktion === 'Vorsitzende/r' || !funktion) return 'Vorsitzende/r des Betriebsrats';
   return funktion + ' des Betriebsrats';
 }
 
-function schriftfuehrerName(daten) {
-  const s = aktiveMitglieder(daten).find(m => m.funktion === 'Schriftführer/in');
+function schriftfuehrerName(daten, sitzung) {
+  const s = mitgliederVon(daten, sitzung).find(m => m.funktion === 'Schriftführer/in');
   return s ? s.name : '';
 }
 
@@ -745,7 +787,7 @@ function teilweiseText(sitzung, t) {
 
 function teilnehmerGruppen(daten, sitzung) {
   const g = { teilnehmend: [], entschuldigt: [], fehlt: [], offen: [] };
-  for (const m of aktiveMitglieder(daten)) {
+  for (const m of besetzungVon(daten, sitzung)) {
     const t = teilnahmeVon(sitzung, m.id);
     if (t.status === 'anwesend' || t.status === 'video') g.teilnehmend.push({ m, t });
     else if (t.status === 'entschuldigt') g.entschuldigt.push({ m, t });
@@ -775,7 +817,7 @@ function anwesenheitsDaten(daten, s) {
 
 /* Beschlussfähigkeit: mindestens die Hälfte der Betriebsratsmitglieder nimmt teil (Ersatzmitglieder zählen mit). */
 function quorumInfo(daten, sitzung) {
-  const groesse = parseInt(daten.stammdaten.gremiumGroesse, 10) ||
+  const groesse = (sitzung && sitzung.besetzung && sitzung.besetzung.groesse) || parseInt(daten.stammdaten.gremiumGroesse, 10) ||
     aktiveMitglieder(daten).filter(m => m.funktion !== 'Ersatzmitglied').length || 0;
   const erforderlich = Math.ceil(groesse / 2);
   const g = teilnehmerGruppen(daten, sitzung);
@@ -1647,7 +1689,7 @@ async function erzeugeEinladungPdf(daten, s, opt) {
   b.abstand(6);
   b.platz(80);
   b.absatz('Mit freundlichen Grüßen', { abstandDanach: 16 });
-  const grussName = s.sitzungsleitung || vorsitzName(daten) || '';
+  const grussName = s.sitzungsleitung || vorsitzName(daten, s) || '';
   if (grussName) b.absatz(grussName, { size: 10.5, abstandDanach: 0 });
   b.absatz(sitzungsleitungRolle(daten, s), { size: 9, farbe: b.c.grau, abstandDanach: 4 });
 
@@ -1776,8 +1818,8 @@ async function erzeugeProtokollPdf(daten, s, opt) {
   b.metaZeile('Datum:', fmtDatum(s.datum, true) || '–', { wertFont: b.f.fett });
   b.metaZeile('Beginn / Ende:', (fmtZeit(s.beginnTatsaechlich || s.beginn) || '–') + '  bis  ' + (fmtZeit(s.endeTatsaechlich || s.endeGeplant) || '–'));
   b.metaZeile('Ort:', s.ort || '–');
-  b.metaZeile('Sitzungsleitung:', s.sitzungsleitung || vorsitzName(daten) || '–');
-  b.metaZeile('Protokollführung:', s.protokollfuehrung || schriftfuehrerName(daten) || '–');
+  b.metaZeile('Sitzungsleitung:', s.sitzungsleitung || vorsitzName(daten, s) || '–');
+  b.metaZeile('Protokollführung:', s.protokollfuehrung || schriftfuehrerName(daten, s) || '–');
   if (s.einladungDatum) b.metaZeile('Geladen am:', fmtDatum(s.einladungDatum) + ' unter Mitteilung der Tagesordnung');
   b.abstand(6);
 
@@ -1855,8 +1897,8 @@ async function erzeugeProtokollPdf(daten, s, opt) {
   b.platz(150);
   b.absatz((st.ort ? st.ort + ', den ' : 'Ort, Datum: ') + '________________', { size: 10, abstandDanach: 0 });
   b.unterschriften([
-    { name: s.sitzungsleitung || vorsitzName(daten) || '', rolle: sitzungsleitungRolle(daten, s) },
-    { name: s.protokollfuehrung || schriftfuehrerName(daten) || '', rolle: 'Weiteres Betriebsratsmitglied / Protokollführung' }
+    { name: s.sitzungsleitung || vorsitzName(daten, s) || '', rolle: sitzungsleitungRolle(daten, s) },
+    { name: s.protokollfuehrung || schriftfuehrerName(daten, s) || '', rolle: 'Weiteres Betriebsratsmitglied / Protokollführung' }
   ]);
 
   /* Die Anwesenheitsliste ist immer Anlage 1 – benannt, aber wie jede Anlage nicht eingebettet. */

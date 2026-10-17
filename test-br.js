@@ -174,6 +174,39 @@ assert.strictEqual(eingespielt2.teilnahme.m1.status, 'anwesend', 'erfasste Anwes
 assert.strictEqual(eingespielt2.gaeste[0].name, 'Vor Ort erfasst', 'erfasste Gäste schlagen die Planung');
 console.log('OK  Geplante Anwesenheit und Gästeliste reisen mit, überschreiben aber nichts Erfasstes');
 
+/* Ergebnisübergabe: Protokoll besitzt den Inhalt, der Sitzungsmanager den Umsetzungsstatus */
+{
+  const lokal = () => ({ teilnahme: {}, beginnTatsaechlich: '16:00', endeTatsaechlich: '17:00', tops: [
+    { id: 't1', beschluesse: [{ id: 'b1', antrag: 'alt', status: 'zugestellt' }, { id: 'b2', antrag: 'weg', status: 'zugestellt' }],
+      aufgaben: [{ id: 'a1', was: 'alt', status: 'erledigt' }, { id: 'a2', was: 'weg', status: 'offen' }], unterpunkte: [] },
+    { id: 't2', beschluesse: [{ id: 'b3', antrag: 'x', status: 'intern' }], aufgaben: [], unterpunkte: [] }
+  ] });
+  const datei = () => ({ vollstaendig: true, teilnahme: {}, beginnTatsaechlich: '', endeTatsaechlich: '', punkte: [
+    { id: 't1', beschluesse: [{ id: 'b1', antrag: 'neu', status: 'in_arbeit' }, { id: 'b9', antrag: 'frisch', status: 'intern' }],
+      aufgaben: [{ id: 'a1', was: 'neu', status: 'offen' }] },
+    { id: 't2', beschluesse: [], aufgaben: [] }
+  ] });
+  const s = lokal();
+  const bil = k.ergebnisseEinspielen(s, datei());
+  const [b1, b9] = s.tops[0].beschluesse;
+  assert.strictEqual(b1.status, 'zugestellt', 'Status aus dem Sitzungsmanager überlebt die erneute Übergabe');
+  assert.strictEqual(b1.antrag, 'neu', 'Antrag kommt aus dem Protokoll');
+  assert.strictEqual(b9.status, 'intern', 'neuer Beschluss startet mit dem Protokollstatus');
+  assert.strictEqual(s.tops[0].aufgaben[0].status, 'erledigt', 'erledigte Aufgabe bleibt erledigt');
+  assert.strictEqual(s.tops[0].aufgaben[0].was, 'neu');
+  assert.strictEqual(s.tops[1].beschluesse.length, 0, 'geleerter TOP wird mit vollstaendig geleert');
+  assert.strictEqual(bil.entfallen.beschluesse.length + '/' + bil.entfallen.aufgaben.length, '2/1', 'entfallene Einträge gezählt');
+  assert.strictEqual(bil.entfallen.beschluesse[0].status, 'zugestellt', 'entfallen trägt den Status');
+  assert.strictEqual(s.beginnTatsaechlich + s.endeTatsaechlich, '', 'geleerte Zeiten werden übertragen');
+
+  const alt = lokal(), ohneFlag = datei();
+  delete ohneFlag.vollstaendig; ohneFlag.punkte.pop();
+  k.ergebnisseEinspielen(alt, ohneFlag);
+  assert.strictEqual(alt.tops[1].beschluesse.length, 1, 'ältere Datei: nicht gelistete TOPs bleiben unberührt');
+  assert.strictEqual(alt.beginnTatsaechlich, '16:00', 'ältere Datei: leere Zeit überschreibt nicht');
+  console.log('OK  Ergebnisübergabe: Status bleibt, geleerte Punkte/Zeiten werden übernommen, alte Dateien schonend');
+}
+
 /* Kategorien sind optional – neue Punkte starten ohne, gelöschte Kategorien fallen auf „ohne" zurück */
 assert.strictEqual(k.neuerTop().kategorie, '', 'neuer TOP startet ohne Kategorie');
 assert.strictEqual(k.neuerUnterpunkt().kategorie, '', 'Unterpunkte haben ein eigenes, leeres Kategoriefeld');
@@ -221,6 +254,38 @@ assert.strictEqual(k.teilweiseText(teilSitzung, teilSitzung.teilnahme.c), 'nur T
 assert.strictEqual(k.teilweiseText(teilSitzung, { status: 'anwesend', tops: [] }), 'bei keinem TOP');
 assert.strictEqual(k.teilweiseText(teilSitzung, teilSitzung.teilnahme.a), '', 'ganze Sitzung: kein Vermerk');
 console.log('OK  Teil-Anwesenheit zählt nur für die Beschlüsse der gewählten TOPs');
+
+/* Historische Anwesenheit: deaktivierte/gelöschte Mitglieder bleiben, abgeschlossene Sitzungen frieren die Besetzung ein */
+{
+  const gr = { stammdaten: { gremiumGroesse: '3' }, personen: [
+    { id: 'v', name: 'Vera', gruppe: 'br', funktion: 'Vorsitzende/r', aktiv: true },
+    { id: 'm', name: 'Max', gruppe: 'br', funktion: 'Mitglied', aktiv: false },
+    { id: 'j', name: 'Jana', gruppe: 'jav', funktion: 'Mitglied', aktiv: true }] };
+  const offen = { teilnahme: { m: { status: 'anwesend' }, j: { status: 'anwesend' }, x: { status: 'anwesend' } } };
+  assert.deepStrictEqual(roh(k.besetzungVon(gr, offen).map(m => m.name)), ['Vera', 'Max', '(gelöschtes Mitglied)'],
+    'deaktiviert mit Status bleibt, gelöschte ID zählt weiter, andere Gremien nicht');
+  assert.strictEqual(k.quorumInfo(gr, { teilnahme: { m: { status: 'anwesend' } } }).teilnehmend, 1, 'deaktiviertes Mitglied „anwesend" zählt mit');
+  assert.strictEqual(k.quorumInfo(gr, { teilnahme: { m: { status: '' } } }).groesse, 3);
+  assert.deepStrictEqual(roh(k.besetzungVon(gr, { teilnahme: {} }).map(m => m.id)), ['v'], 'deaktiviert ohne Status taucht nicht auf');
+
+  const zu = { status: 'abgeschlossen', sitzungsleitung: '', teilnahme: { v: { status: 'anwesend' }, m: { status: 'anwesend' } } };
+  k.besetzungEinfrieren(gr, zu);
+  assert.strictEqual(zu.besetzung.groesse, 3);
+  assert.deepStrictEqual(roh(zu.besetzung.mitglieder.map(m => m.id)), ['v', 'm']);
+  gr.stammdaten.gremiumGroesse = '9';
+  gr.personen = gr.personen.filter(p => p.id !== 'v');   /* Vorsitzende gelöscht */
+  gr.personen.push({ id: 'n', name: 'Neu', gruppe: 'br', funktion: 'Vorsitzende/r', aktiv: true });
+  const q = k.quorumInfo(gr, zu);
+  assert.ok(q.groesse === 3 && q.beschlussfaehig, 'spätere Gremiumgröße ändert das Quorum der abgeschlossenen Sitzung nicht');
+  assert.deepStrictEqual(roh(k.anwesenheitsDaten(gr, zu).mitglieder.map(m => m.name)), ['Vera (Vorsitzende/r)', 'Max'],
+    'gelöschte Person behält Name und Funktion aus dem Schnappschuss');
+  assert.strictEqual(k.vorsitzName(gr, zu), 'Vera', 'Vorsitz aus dem Schnappschuss');
+  assert.strictEqual(k.sitzungsleitungRolle(gr, zu), 'Vorsitzende/r des Betriebsrats');
+  assert.strictEqual(k.vorsitzName(gr), 'Neu', 'ohne Sitzung gilt der heutige Vorsitz');
+  assert.ok(roh(k.besetzungVon(gr, { teilnahme: {} }).map(m => m.id)).includes('n'), 'offene Sitzung: neues aktives Mitglied erscheint');
+  assert.ok(!k.besetzungVon(gr, zu).some(m => m.id === 'n'), 'abgeschlossene Sitzung: neues Mitglied bleibt draußen');
+}
+console.log('OK  Historische Anwesenheit/Quorum aus eingefrorener Besetzung');
 
 assert.deepStrictEqual(roh(k.standardUnterpunkteNorm([{ titel: 'A', kategorie: 'beratung' }, 'B']).map(u => [u.titel, u.kategorie])),
   [['A', 'beratung'], ['B', '']], 'Standard-Unterpunkte behalten ihre Kategorie');
