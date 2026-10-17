@@ -1506,8 +1506,10 @@ function renderHaupt() {
   stSel.onchange = () => {
     s.status = stSel.value;
     /* Abschließen friert Besetzung und Gremiumgröße ein; wieder geöffnet rechnet die Sitzung live. */
-    if (s.status === 'abgeschlossen') besetzungEinfrieren(daten, s); else delete s.besetzung;
-    speichern(); renderSeitenleiste();
+    /* Eine schon vorhandene (z. B. per Übergabe aus dem Protokoll gekommene) Besetzung bleibt beim Abschließen stehen. */
+    if (s.status !== 'abgeschlossen') delete s.besetzung;
+    else if (!s.besetzung) besetzungEinfrieren(daten, s);
+    speichern(); renderAlles();   /* Anwesenheit und Quorum hängen an der Besetzung */
   };
   if (sitzungsAktionen) {
     c.querySelector('#kDuplizieren').onclick = () => sitzungDuplizieren(s);
