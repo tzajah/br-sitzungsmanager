@@ -172,6 +172,10 @@ const eingespielt2 = JSON.parse(JSON.stringify(nutzlast.sitzung));
 k.tagesordnungEinspielen(laufend, eingespielt2);
 assert.strictEqual(eingespielt2.teilnahme.m1.status, 'anwesend', 'erfasste Anwesenheit schlägt die Planung');
 assert.strictEqual(eingespielt2.gaeste[0].name, 'Vor Ort erfasst', 'erfasste Gäste schlagen die Planung');
+const korrigiert = Object.assign({}, laufend, { besetzung: { am: '2026-02-01', groesse: 5, mitglieder: [] } });
+const eingespielt3 = Object.assign(JSON.parse(JSON.stringify(nutzlast.sitzung)), { besetzung: { am: '2026-01-01', groesse: 3, mitglieder: [] } });
+k.tagesordnungEinspielen(korrigiert, eingespielt3);
+assert.strictEqual(eingespielt3.besetzung.groesse, 5, 'eigene Besetzung des Protokolls schlägt die aus der Tagesordnung');
 console.log('OK  Geplante Anwesenheit und Gästeliste reisen mit, überschreiben aber nichts Erfasstes');
 
 /* Ergebnisübergabe: Protokoll besitzt den Inhalt, der Sitzungsmanager den Umsetzungsstatus */

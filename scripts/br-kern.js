@@ -110,6 +110,8 @@ function tagesordnungEinspielen(alt, neu) {
       .some(id => ((alt.teilnahme[id] || {}).status || '').trim());
     if (eigeneAnwesenheit || !neu.teilnahme) neu.teilnahme = alt.teilnahme || {};
     if ((alt.gaeste || []).length || !neu.gaeste) neu.gaeste = alt.gaeste || [];
+    /* Die eingefrorene Besetzung gehört zur Anwesenheit – hat das Protokoll eine eigene, sticht sie. */
+    if (alt.besetzung !== undefined) neu.besetzung = alt.besetzung;
     neu.anlagenProt = alt.anlagenProt || [];
     neu.beginnTatsaechlich = alt.beginnTatsaechlich || '';
     neu.endeTatsaechlich = alt.endeTatsaechlich || '';
