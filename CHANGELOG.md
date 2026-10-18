@@ -32,9 +32,12 @@ veröffentlichten Releases).
 - **Import konnte den Bestand zerstören.** Eine Sicherung ersetzt den Bestand jetzt in einem
   Schritt; bricht der Import ab, bleibt der bisherige Stand unverändert. Eigene Exporte
   lassen sich wieder einlesen, und Sitzungsnummern sind eindeutig.
-- **Wiederöffnen überschrieb einen neueren Browserstand.** Beim Wiederöffnen einer Datei
-  gewinnt jetzt der neuere Stand; nach einem Passwortwechsel entstehen die Sicherungen
-  weiter korrekt, und beim Verlassen der Seite wird zuvor gespeichert.
+- **Wiederöffnen überschrieb einen neueren Browserstand.** Ist der Stand im Browser gleich
+  alt oder jünger als die geöffnete Sicherung, bleibt er erhalten. Ist die Datei neuer oder
+  gehört sie zu einem anderen Projekt, fragt die App nach – auf Wunsch wird vorher gesichert.
+  Sicherungen aus der Zeit vor einem Passwortwechsel lassen sich wieder öffnen (notfalls mit
+  dem damaligen Passwort). Beim Verlassen der Seite warnt die App vor ungespeicherten
+  Änderungen, beim Wechsel in einen anderen Tab speichert sie sofort.
 - **Nur ein Tab schreibt.** Ist die Sitzung in mehreren Tabs offen, darf nur einer
   schreiben; die übrigen zeigen nur an und schreiben auf keinem Weg, auch nicht über
   Sicherung oder Autospeichern. Erhält ein Lese-Tab später das Schreibrecht, lädt er zuerst
@@ -57,7 +60,6 @@ veröffentlichten Releases).
   Tag-Farben aus importierten Dateien werden geprüft bzw. maskiert, auch an weiteren Stellen
   der Oberfläche. Die Anlagen-Vorschau zeigt nur noch PDF, Bilder und Text direkt an; alle
   anderen Typen werden heruntergeladen.
-
 
 ### Geändert (Admin-Menü)
 - **„Gremium & Mitglieder“ heißt jetzt „Admin-Menü“** – mit Zahnrad-Symbol in der
