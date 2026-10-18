@@ -2318,7 +2318,7 @@ function sitzungAnlegen() {
 /* Löschen läuft durch die Schreibkette: ein laufender Flush schreibt die Sitzung zuerst fertig, das Löschen kommt danach
    und kann sie so nicht wiederbeleben. Scheitert es, kommt die Sitzung zurück in den Speicher und der Fehler wird gezeigt. */
 async function sitzungLoeschen(s) {
-  const wegId = s.id, pos = daten.sitzungen.indexOf(s);
+  const wegId = s.id, pos = daten.sitzungen.indexOf(s), warDirty = dirtySitzungen.has(wegId);
   daten.sitzungen = daten.sitzungen.filter(x => x.id !== wegId);
   ui.sitzungId = daten.sitzungen[0] ? daten.sitzungen[0].id : null;
   dirtySitzungen.delete(wegId);
@@ -2329,6 +2329,7 @@ async function sitzungLoeschen(s) {
     console.warn('Löschen fehlgeschlagen:', e);
     if (!daten.sitzungen.some(x => x.id === wegId)) daten.sitzungen.splice(Math.max(0, Math.min(pos, daten.sitzungen.length)), 0, s);
     ui.sitzungId = wegId;
+    if (warDirty) dirtySitzungen.add(wegId);   /* ungespeicherte Änderungen der zurückgeholten Sitzung nicht verlieren */
     ui.speicherFehler = true;
     setAutosaveInfo('Speichern fehlgeschlagen – bitte über „Sichern (Datei)" sichern!', true);
     zeigeToast('Die Sitzung konnte nicht gelöscht werden.', 'fehler');

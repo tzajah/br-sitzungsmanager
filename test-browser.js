@@ -2764,9 +2764,10 @@ async function pruefeEchtePersistenz() {
       const erg = {};
       const orig = Speicher.sitzungLoeschen.bind(Speicher);
       Speicher.sitzungLoeschen = () => Promise.reject(new Error('Platte voll'));
+      daten.sitzungen.find(x => x.id === '${a}').ort = 'noch ungespeichert'; dirtySitzungen.add('${a}');
       await sitzungLoeschen(daten.sitzungen.find(x => x.id === '${a}'));
       erg.fehler = { speicher: daten.sitzungen.map(s => s.id), gespeichert: Object.keys(await leseGespeichert()),
-                     flag: ui.speicherFehler, toasts: fehlerToasts() };
+                     flag: ui.speicherFehler, toasts: fehlerToasts(), dirty: dirtySitzungen.has('${a}') };
       Speicher.sitzungLoeschen = orig;
 
       const s = daten.sitzungen.find(x => x.id === '${a}');
@@ -2781,6 +2782,7 @@ async function pruefeEchtePersistenz() {
     })()`);
     assert.ok(r.fehler.speicher.includes(a), 'Löschfehler: Sitzung bleibt im Arbeitsspeicher');
     assert.ok(r.fehler.gespeichert.includes(a), 'und im Speicher');
+    assert.ok(r.fehler.dirty, 'Löschfehler: ungespeicherte Änderungen bleiben zum Speichern vorgemerkt');
     assert.ok(r.fehler.flag, 'Fehlerzustand gesetzt');
     assert.ok(r.fehler.toasts.some(t => /nicht gelöscht/.test(t)), 'Fehlermeldung: ' + JSON.stringify(r.fehler.toasts));
     assert.deepStrictEqual(r.race.speicher, [b], 'gelöscht im Arbeitsspeicher');
