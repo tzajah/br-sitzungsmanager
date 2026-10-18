@@ -166,15 +166,30 @@ function schreibLockHolen() {
     });
   });
 }
-function schreibLockFreigeben() {
+/* Nur den Lock abgeben, Hinweis und Übernahme-Knopf bleiben (Fehlerpfade: erneute Übernahme muss möglich bleiben). */
+function schreibLockLoslassen() {
   if (schreibLockFrei) schreibLockFrei();
-  schreibLockFrei = null; nurLesendWeilAndererTab = false;
+  schreibLockFrei = null;
+}
+function schreibLockFreigeben() {
+  schreibLockLoslassen(); nurLesendWeilAndererTab = false;
   const h = typeof document !== 'undefined' && document.getElementById('schreibHinweis'); if (h) h.remove();
 }
 /* Beim Entsperren aufrufen: ohne Lock wird der Tab nur-lesend und zeigt Hinweis samt Übernahme-Knopf. */
+/* Aktuellen Stand der Datenbank laden (vor dem Schreibrecht eines bisher lesenden Tabs, sonst würde veralteter Stand zurückgeschrieben). */
+async function standNeuLaden() {
+  try { daten = await allesLaden(); } catch (e) { return false; }
+  dirtyMeta = false; dirtySitzungen.clear();
+  if (!daten.sitzungen.some(s => s.id === ui.sitzungId)) ui.sitzungId = daten.sitzungen[0] ? daten.sitzungen[0].id : null;
+  return true;
+}
 async function schreibRechtPruefen() {
   if (!(sitzungsRolle === 'arbeit' || sitzungsRolle === 'admin')) return;
-  nurLesendWeilAndererTab = !(await schreibLockHolen());
+  const warLesend = nurLesendWeilAndererTab;
+  let hatLock = await schreibLockHolen();
+  /* War der Tab bisher nur lesend, ist sein Stand evtl. veraltet: erst neu laden, sonst lesend bleiben. */
+  if (hatLock && warLesend && !(await standNeuLaden())) { schreibLockLoslassen(); hatLock = false; }
+  nurLesendWeilAndererTab = !hatLock;
   const h = document.getElementById('schreibHinweis');
   if (!nurLesendWeilAndererTab) { if (h) h.remove(); return; }
   if (h) return;
@@ -186,9 +201,7 @@ async function schreibRechtPruefen() {
   document.getElementById('schreibUebernehmen').onclick = async () => {
     if (!(await schreibLockHolen())) return zeigeToast('Der andere Tab ist noch geöffnet – bitte dort „Datei schließen" wählen.', 'fehler');
     /* Erst den Stand der Datenbank laden, dann Bearbeiten freigeben – sonst würde veralteter Stand zurückgeschrieben. */
-    try { daten = await allesLaden(); } catch (e) { schreibLockFreigeben(); nurLesendWeilAndererTab = true; return zeigeToast('Aktueller Stand ließ sich nicht laden.', 'fehler'); }
-    dirtyMeta = false; dirtySitzungen.clear();
-    if (!daten.sitzungen.some(s => s.id === ui.sitzungId)) ui.sitzungId = daten.sitzungen[0] ? daten.sitzungen[0].id : null;
+    if (!(await standNeuLaden())) { schreibLockLoslassen(); nurLesendWeilAndererTab = true; return zeigeToast('Aktueller Stand ließ sich nicht laden.', 'fehler'); }
     nurLesendWeilAndererTab = false; el.remove();
     aktualisiereRollenUi(); renderAlles();
     zeigeToast('Bearbeitung in diesem Tab übernommen.', 'erfolg');
@@ -624,11 +637,12 @@ async function sicherungMitMk(d, mk) {
   catch (e) { return null; }
 }
 
+/* Gibt true zurück, wenn die Sicherungsdatei ausgegeben wurde. */
 async function projektDateiSpeichern() {
-  if (!sitzungsSchluessel) return;
+  if (!sitzungsSchluessel) return false;
   try {
     let von = await textAbfrage('Sicherung erstellen', 'Name der bearbeitenden Person (erscheint im Sicherungsvermerk):', bearbeiterName());
-    if (von == null) return;
+    if (von == null) return false;
     von = von.trim();
     if (von) bearbeiterName(von);
     const revision = (daten.revision || 0) + 1;
@@ -660,8 +674,10 @@ async function projektDateiSpeichern() {
     }
     aktualisiereSicherungInfo();
     zeigeToast('Sicherung „' + name + '" erstellt. Bitte auf dem Netzlaufwerk ablegen.', 'erfolg');
+    return true;
   } catch (e) {
     zeigeToast('Die Sicherung konnte nicht erstellt werden.', 'fehler');
+    return false;
   }
 }
 
@@ -1154,9 +1170,7 @@ async function projektBeitreten(datei) {
           ? 'Die Datei (Rev. ' + fRev + ') ist neuer als der Stand in diesem Browser (Rev. ' + lRev + ') oder weicht von ihm ab.'
           : 'Die Datei gehört zu einem anderen Projekt als der Stand in diesem Browser.');
         if (wahl === 'sichern') {
-          const vorher = daten.revision;
-          await projektDateiSpeichern();
-          ersetzen = daten.revision !== vorher;   /* Sicherung abgebrochen/gescheitert → Browserstand bleibt */
+          ersetzen = await projektDateiSpeichern();   /* Sicherung abgebrochen/gescheitert → Browserstand bleibt */
         } else ersetzen = wahl === 'ersetzen';
       }
     } else if (!darfErsetzen) daten = migriere(projekt);   /* nur anzeigen, nicht speichern */

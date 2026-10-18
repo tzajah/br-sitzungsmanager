@@ -1820,11 +1820,11 @@ async function testSicherung(seite, { zusatz = {}, titel = 'Original', fremd = f
   })()`);
 }
 /* Wie anmeldenPerDatei, aber bis zur Frage „Browserstand ersetzen?" – der Sperrschirm bleibt dabei stehen. */
-async function anmeldenBisErsetzenFrage(seite, datei) {
+async function anmeldenBisErsetzenFrage(seite, datei, passwort = TEST_PW.arbeit) {
   await seite.waitForSelector('#sperrschirm #pwDatei');
   const [wahl] = await Promise.all([seite.waitForEvent('filechooser'), seite.click('#pwDatei')]);
   await wahl.setFiles({ name: 'Test.brenc.json', mimeType: 'application/json', buffer: Buffer.from(datei) });
-  await seite.fill('#pwEingabe', TEST_PW.arbeit);
+  await seite.fill('#pwEingabe', passwort);
   await seite.click('#pwOk');
   await seite.waitForSelector('#dlgBestaetigen #beErsetzen', { timeout: 15000 });
 }
@@ -1888,6 +1888,17 @@ async function pruefeBrowserstandBeimOeffnen() {
   assert.strictEqual(await seite.evaluate('daten.sitzungen[0].tops[0].titel'), 'Datei neuer', 'neuere Datei ersetzt den Browserstand');
   assert.strictEqual(await titelImSpeicher(), 'Datei neuer', 'neuere Datei steht auch in der IndexedDB');
   assert.strictEqual(await seite.evaluate('daten.revision'), 3, 'Revision der Datei übernommen');
+
+  /* Viewer, „Erst sichern, dann ersetzen": die Sicherung ändert die Revision des Viewers nicht – trotzdem wird ersetzt. */
+  await seite.evaluate('sperren()');
+  await anmeldenBisErsetzenFrage(seite, await testSicherung(seite, { titel: 'Viewer neu', zusatz: { revision: 5 } }), TEST_PW.viewer);
+  await Promise.all([seite.waitForEvent('download'), (async () => {
+    await seite.click('#beSichern');
+    await seite.click('#dlgBestaetigen #txtOk');
+  })()]);
+  await seite.waitForSelector('#sperrschirm', { state: 'detached', timeout: 15000 });
+  assert.strictEqual(await seite.evaluate('daten.sitzungen[0].tops[0].titel'), 'Viewer neu', 'Viewer: nach der Sicherung wird ersetzt');
+  assert.strictEqual(await titelImSpeicher(), 'Viewer neu', 'Viewer: Ersetzen steht in der IndexedDB');
 
   /* Passwortwechsel: gleicher Hauptschlüssel, neues Arbeits-Passwort; alte Sicherung trägt den alten Zugangsblock. */
   const zugangNeu = await seite.evaluate(`(async () => {
@@ -2740,7 +2751,18 @@ async function pruefeEinSchreibenderTab() {
   await seite3.close();
 
   await seite1.evaluate(`(async () => { daten.sitzungen[0].ort = 'Raum Tab 1'; await speichern(true); await sperren(); })()`);
+  /* Laden scheitert: Lock wird wieder abgegeben, Hinweis und Knopf bleiben für einen neuen Versuch; auch ein erneutes Schreibrecht-Prüfen bleibt lesend. */
+  await seite2.evaluate(`window.allesLadenOrig = allesLaden; allesLaden = () => Promise.reject(new Error('Test'))`);
   await seite2.click('#schreibUebernehmen');
+  await seite2.waitForFunction('[...document.querySelectorAll("#toastContainer .toast")].some(t => /nicht laden/.test(t.textContent))');
+  assert.ok(await seite2.evaluate('!!document.getElementById("schreibUebernehmen") && !darfBearbeiten() && !schreibLockFrei'), 'Laden gescheitert: Hinweis und Knopf bleiben, Lock frei');
+  await seite2.evaluate('schreibRechtPruefen()');
+  assert.ok(await seite2.evaluate('!darfBearbeiten() && !schreibLockFrei && !!document.getElementById("schreibUebernehmen")'), 'Prüfen mit gescheitertem Laden bleibt lesend');
+  /* Später bekommt der bisher lesende Tab das Schreibrecht über schreibRechtPruefen() (Beitritt/Fortsetzen/Start): erst neu laden. */
+  await seite2.evaluate('allesLaden = window.allesLadenOrig');
+  assert.notStrictEqual(await seite2.evaluate('daten.sitzungen[0].ort'), 'Raum Tab 1', 'Lese-Tab hat noch den alten Stand');
+  await seite2.evaluate('schreibRechtPruefen()');
+  assert.strictEqual(await seite2.evaluate('daten.sitzungen[0].ort'), 'Raum Tab 1', 'Schreibrecht über Prüfen lädt vorher den aktuellen Stand');
   await seite2.waitForFunction('darfBearbeiten()', null, { timeout: 5000 });
   assert.strictEqual(await seite2.evaluate('daten.sitzungen[0].ort'), 'Raum Tab 1', 'Übernahme lädt den Stand von Tab 1');
   await seite2.evaluate(`(async () => { daten.sitzungen[0].titel = 'Titel Tab 2'; await speichern(true); })()`);
