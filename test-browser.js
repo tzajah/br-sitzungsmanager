@@ -2774,6 +2774,25 @@ async function pruefeEinSchreibenderTab() {
   const nachtrag = await seite2.evaluate(`(async () => { const rec = (await Speicher.sitzungenAlle()).find(r => r.id === 'zzz-alt-ohne');
     return (await Krypto.dechiffriere(sitzungsSchluessel, rec.iv, rec.ct)).besetzung; })()`);
   assert.ok(nachtrag && nachtrag.mitglieder, 'Übernahme schreibt die nachgetragene Besetzung in die IndexedDB');
+
+  /* Erfolgsweg von schreibRechtPruefen() ohne Knopf: bisher lesender Tab erwirbt den Lock später, lädt neu und schreibt den Nachtrag. */
+  await seite2.evaluate(`(async () => {
+    /* "Tab 1" schreibt direkt in die Datenbank (Lock noch gehalten), danach ist dieser Tab wieder lesend: */
+    const id0 = daten.sitzungen[0].id, rec = (await Speicher.sitzungenAlle()).find(r => r.id === id0);
+    const s0 = await Krypto.dechiffriere(sitzungsSchluessel, rec.iv, rec.ct); s0.ort = 'Raum Tab 1'; s0.notiz2 = 'Neu von Tab 1';
+    const a = Object.assign(neueSitzung(daten), { id: 'zzzz-alt-ohne', status: 'abgeschlossen', datum: '2026-04-04' }); delete a.besetzung;
+    for (const x of [s0, a]) { const { iv, ct } = await Krypto.chiffriere(sitzungsSchluessel, x); await Speicher.sitzungSetzen({ id: x.id, iv, ct }); }
+    schreibLockFreigeben(); nurLesendWeilAndererTab = true;
+  })()`);
+  assert.ok(!(await seite2.evaluate('darfBearbeiten()')), 'Lese-Tab vor dem Prüfen ohne Schreibrecht');
+  await seite2.evaluate('schreibRechtPruefen()');
+  assert.ok(await seite2.evaluate('darfBearbeiten()'), 'Prüfen: Lock erhalten, Schreibrecht da');
+  assert.ok(!(await seite2.evaluate('!!document.getElementById("schreibHinweis")')), 'Prüfen: kein Hinweis');
+  assert.strictEqual(await seite2.evaluate('daten.sitzungen.find(s => s.id !== "zzz-alt-ohne" && s.id !== "zzzz-alt-ohne").notiz2'), 'Neu von Tab 1', 'Prüfen lädt den aktuellen Stand');
+  await seite2.waitForFunction(`speicherOffen === 0 && !speicherTimer && dirtySitzungen.size === 0`, null, { timeout: 5000 });
+  const nachtrag2 = await seite2.evaluate(`(async () => { const rec = (await Speicher.sitzungenAlle()).find(r => r.id === 'zzzz-alt-ohne');
+    return (await Krypto.dechiffriere(sitzungsSchluessel, rec.iv, rec.ct)).besetzung; })()`);
+  assert.ok(nachtrag2 && nachtrag2.mitglieder, 'Prüfen schreibt die nachgetragene Besetzung in die IndexedDB');
   await seite2.evaluate(`(async () => { daten.sitzungen[0].titel = 'Titel Tab 2'; await speichern(true); })()`);
   const g = await gespeichert(seite2);
   assert.strictEqual(g.ort, 'Raum Tab 1', 'Ort von Tab 1 bleibt erhalten');
