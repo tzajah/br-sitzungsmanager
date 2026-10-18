@@ -1484,7 +1484,13 @@ function oeffneStammdaten() {
   };
   dlg.querySelector('#sdEdgeWarnung').onchange = async e => {
     if (e.target.checked) aktuellesZugang.edgeWarnung = true; else delete aktuellesZugang.edgeWarnung;
-    await Speicher.metaSetzen('zugang', aktuellesZugang);
+    try { await Speicher.metaSetzen('zugang', aktuellesZugang); }
+    catch (err) {
+      /* Zurück auf den gespeicherten Stand, sonst lädt die nächste Zugangsdatei einen nie gespeicherten Wert herunter. */
+      e.target.checked = !e.target.checked;
+      if (e.target.checked) aktuellesZugang.edgeWarnung = true; else delete aktuellesZugang.edgeWarnung;
+      zeigeToast('Edge-Warnung konnte nicht gespeichert werden.', 'fehler'); return;
+    }
     zeigeToast('Edge-Warnung ' + (e.target.checked ? 'eingeschaltet' : 'ausgeschaltet') + '. Bitte jetzt „Zugangsdatei (br-zugang.js) herunterladen" und die Datei in den Unterordner „scripts" legen, damit es für alle gilt.', 'erfolg');
   };
   dlg.querySelector('#sdReset').onclick = () => bestaetigen('Wirklich alles zurücksetzen?',

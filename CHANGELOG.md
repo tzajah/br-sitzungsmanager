@@ -7,6 +7,13 @@ veröffentlichten Releases).
 
 ## [Unreleased]
 
+### Hinzugefügt
+- **Edge-Warnung vor dem Login.** Im Admin-Menü (Reiter „Zugang“) lässt sich eine Warnung
+  einschalten, die unter Microsoft Edge bei jedem Start auf dem Login-Schirm empfiehlt, die
+  Anwendung in Google Chrome zu öffnen. Die Einstellung steht in der Zugangsdatei
+  `br-zugang.js` und gilt nach deren erneutem Herunterladen und Ablegen für alle Rechner und
+  beide Module. Die Anmeldung bleibt möglich.
+
 ### Behoben
 - **Die Einladungs-Mail lud alle Ersatzmitglieder ein.** Jetzt nur noch die, die für diese
   Sitzung geladen sind: in der geplanten Anwesenheit (Reiter „Einladung“) als anwesend oder
