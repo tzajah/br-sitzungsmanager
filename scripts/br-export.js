@@ -1480,7 +1480,8 @@ function oeffneStammdaten() {
   };
   dlg.querySelector('#sdReset').onclick = () => bestaetigen('Wirklich alles zurücksetzen?',
     'Sämtliche Sitzungen, Mitglieder und Anlagen werden aus dem Zwischenspeicher dieses Browsers entfernt. Nicht als Datei gesicherte Daten gehen verloren.',
-    () => { daten = leeresProjekt(); ui.sitzungId = null; dirtyMeta = false; dirtySitzungen.clear(); alleDatenErsetzenP().then(() => { dlg.close(); renderAlles(); zeigeToast('Alle Daten wurden zurückgesetzt.'); }); },
+    () => { if (!darfBearbeiten()) return zeigeToast('In diesem Tab nur lesend – bitte im schreibenden Tab zurücksetzen.', 'fehler');
+      daten = leeresProjekt(); ui.sitzungId = null; dirtyMeta = false; dirtySitzungen.clear(); alleDatenErsetzenP().then(() => { dlg.close(); renderAlles(); zeigeToast('Alle Daten wurden zurückgesetzt.'); }); },
     'Alles löschen', true);
 
   const schliessen = () => { dlg.close(); renderAlles(); };

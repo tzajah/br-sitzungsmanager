@@ -2712,6 +2712,33 @@ async function pruefeEinSchreibenderTab() {
   await seite2.click('#schreibUebernehmen');
   assert.ok(!(await seite2.evaluate('darfBearbeiten()')), 'Übernahme scheitert, solange Tab 1 den Lock hält');
 
+  /* Lese-Tab: Sicherung (Strg+S) gibt nur die Datei aus, der veraltete Stand landet nicht in der Datenbank; direkte Schreibwege sind gesperrt. */
+  const metaGespeichert = s => s.evaluate(`(async () => ({ firma: (await metaChiffriertHolen('stammdaten')).firma,
+    revision: (await metaChiffriertHolen('appmeta')).revision }))()`);
+  const metaVorher = await metaGespeichert(seite1);
+  await seite2.evaluate(`daten.stammdaten.firma = 'Veraltet Tab 2'`);
+  const [download] = await Promise.all([seite2.waitForEvent('download'), (async () => {
+    await seite2.keyboard.press('Control+s');
+    await seite2.click('#dlgBestaetigen #txtOk');
+  })()]);
+  assert.ok(/\.brenc\.json$/.test(download.suggestedFilename()), 'Lese-Tab gibt die Sicherungsdatei aus');
+  await seite2.waitForFunction('[...document.querySelectorAll("#toastContainer .toast")].some(t => /erstellt/.test(t.textContent))');
+  assert.deepStrictEqual(await metaGespeichert(seite1), metaVorher, 'Sicherung im Lese-Tab ändert die gespeicherten Metadaten nicht');
+  assert.ok(await seite2.evaluate('metaAllesSchreiben().then(() => false, () => true)'), 'direktes Schreiben im Lese-Tab wird abgewiesen');
+  assert.deepStrictEqual(await metaGespeichert(seite1), metaVorher, 'auch danach unverändert');
+
+  /* Neuere Sicherung in einem weiteren Tab, während Tab 1 schreibt: nur lesend öffnen, nichts ersetzen (auch keine Ersetzen-Frage). */
+  const seite3 = await oeffnen();
+  await anmeldenPerDatei(seite3, await testSicherung(seite3, { titel: 'Neuere Datei', zusatz: { revision: 5 } }));
+  assert.ok(!(await seite3.evaluate('darfBearbeiten()')), 'dritter Tab ist nur lesend');
+  assert.ok(await seite3.evaluate('!!document.getElementById("schreibHinweis")'), 'Hinweis im dritten Tab');
+  assert.strictEqual(await seite3.evaluate('daten.sitzungen[0].tops[0].titel'), 'Original', 'dritter Tab zeigt den Browserstand');
+  assert.ok(await seite3.evaluate('[...document.querySelectorAll("#toastContainer .toast")].some(t => /nicht in diesen Browser übernommen/.test(t.textContent))'),
+    'Meldung: Sicherung erst nach Übernahme ladbar');
+  assert.strictEqual((await gespeichert(seite1)).tops[0].titel, 'Original', 'neuere Sicherung lässt die IndexedDB unberührt');
+  assert.strictEqual((await metaGespeichert(seite1)).revision, metaVorher.revision, 'Revision in der IndexedDB unverändert');
+  await seite3.close();
+
   await seite1.evaluate(`(async () => { daten.sitzungen[0].ort = 'Raum Tab 1'; await speichern(true); await sperren(); })()`);
   await seite2.click('#schreibUebernehmen');
   await seite2.waitForFunction('darfBearbeiten()', null, { timeout: 5000 });
@@ -2989,9 +3016,27 @@ async function pruefeEchtePersistenz() {
     await seite.context().close();
   }
 
+  /* 9) Laufender Schreibvorgang: Vormerkung schon abgenommen, trotzdem gilt bis zum Abschluss „ungespeichert" (Warnung beim Verlassen) */
+  {
+    const { seite } = await echteSeite(browser, fehler);
+    const r = await seite.evaluate(`(async () => {
+      const zurueck = langsam(300);
+      daten.sitzungen[0].ort = 'Unterwegs'; const lauf = speichern(true);
+      await new Promise(res => setTimeout(res, 80));
+      const ev = new Event('beforeunload', { cancelable: true }); window.dispatchEvent(ev);
+      const waehrend = { offen: ungespeichert(), gewarnt: ev.defaultPrevented, vorgemerkt: dirtyMeta || dirtySitzungen.size > 0 || !!speicherTimer };
+      await lauf; zurueck();
+      return { waehrend, nachher: ungespeichert() };
+    })()`);
+    assert.strictEqual(r.waehrend.vorgemerkt, false, 'Ausgangslage: Vormerkung ist während des Schreibens abgenommen');
+    assert.ok(r.waehrend.offen && r.waehrend.gewarnt, 'während des Schreibens: ungespeichert, beforeunload warnt');
+    assert.strictEqual(r.nachher, false, 'nach dem Schreiben nicht mehr ungespeichert');
+    await seite.context().close();
+  }
+
   assert.deepStrictEqual(fehler, [], 'keine Laufzeitfehler');
   await browser.close();
-  console.log('OK  Echte Persistenz: Schließen, gleichzeitiges Schreiben, Schreibfehler, Import-Rollback, Besetzungs-Nachtrag, Transaktionsabbruch, späte Anlage, Löschen');
+  console.log('OK  Echte Persistenz: Schließen, gleichzeitiges Schreiben, Schreibfehler, Import-Rollback, Besetzungs-Nachtrag, Transaktionsabbruch, späte Anlage, Löschen, laufendes Schreiben');
 }
 
 (async () => {

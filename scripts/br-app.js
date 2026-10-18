@@ -147,14 +147,18 @@ function istAdmin() { return sitzungsRolle === 'admin'; }
 function adminMenueVerfuegbar() { return istAdmin() && modusHatAnsicht('stammdaten'); }
 /* Viewer darf nur lesen. */
 function darfBearbeiten() { return !nurLesendWeilAndererTab && (sitzungsRolle === 'arbeit' || sitzungsRolle === 'admin'); }
+/* Zentrale Sperre im Speicher-Adapter: geschrieben wird nur mit Bearbeitungsrecht oder gehaltenem Schreib-Lock (Viewer beim Beitritt) –
+   ein Lese-Tab kann so auf keinem Weg den Stand des schreibenden Tabs überschreiben. */
+function schreibenGesperrt() { return !darfBearbeiten() && !schreibLockFrei; }
 
 /* Nur ein Tab darf schreiben (sonst überschreiben sich zwei Tabs derselben IndexedDB gegenseitig): Web Lock pro Datenbank.
    Ohne navigator.locks bleibt das bisherige Verhalten. */
 let nurLesendWeilAndererTab = false;
-let schreibLockFrei = null;           /* gesetzt = dieser Tab hält den Lock */
+let schreibLockFrei = null;           /* gesetzt = dieser Tab hält den Lock (ohne navigator.locks: immer) */
 const SCHREIB_LOCK = 'br-schreiben-' + DB_NAME;
 function schreibLockHolen() {
-  if (schreibLockFrei || !navigator.locks) return Promise.resolve(true);
+  if (!navigator.locks) schreibLockFrei = schreibLockFrei || (() => {});
+  if (schreibLockFrei) return Promise.resolve(true);
   return new Promise(res => {
     navigator.locks.request(SCHREIB_LOCK, { mode: 'exclusive', ifAvailable: true }, lock => {
       if (!lock) { res(false); return; }
@@ -191,8 +195,9 @@ async function schreibRechtPruefen() {
   };
 }
 
-/* Reload/Schließen: Warnung bei ungespeicherten Änderungen; beim Ausblenden sofort schreiben (Schreiben beim Entladen ist nicht verlässlich). */
-function ungespeichert() { return !!sitzungsSchluessel && darfBearbeiten() && (dirtyMeta || dirtySitzungen.size > 0 || !!speicherTimer); }
+/* Reload/Schließen: Warnung bei ungespeicherten Änderungen – auch solange ein Schreiblauf noch nicht abgeschlossen ist (die Vormerkung ist dann schon abgenommen);
+   beim Ausblenden sofort schreiben (Schreiben beim Entladen ist nicht verlässlich). */
+function ungespeichert() { return !!sitzungsSchluessel && darfBearbeiten() && (dirtyMeta || dirtySitzungen.size > 0 || !!speicherTimer || speicherOffen > 0); }
 if (typeof window.addEventListener === 'function') {
   window.addEventListener('beforeunload', e => { if (ungespeichert()) { e.preventDefault(); e.returnValue = ''; } });
   function sofortSpeichern() { if (ungespeichert()) { clearTimeout(speicherTimer); speicherTimer = null; flushSpeicher(); } }
@@ -224,7 +229,8 @@ const Speicher = {
   },
   metaHolen(name) { return this._req(this._store('meta', 'readonly').get(name)); },
   /* Schreiben gilt erst mit tx.oncomplete als dauerhaft – onsuccess der Anfrage reicht nicht, die Transaktion kann danach noch abbrechen. */
-  _schreiben(name, op) {
+  _schreiben(name, op, immer) {
+    if (!immer && schreibenGesperrt()) return Promise.reject(new Error('Nur lesend – dieser Tab hat kein Schreibrecht'));
     return new Promise((res, rej) => {
       const tx = this.db.transaction(name, 'readwrite');
       tx.oncomplete = () => res();
@@ -233,7 +239,8 @@ const Speicher = {
       try { op(tx.objectStore(name)); } catch (e) { tx.abort(); rej(e); }
     });
   },
-  metaSetzen(name, wert) { return this._schreiben('meta', st => st.put(wert, name)); },
+  /* 'zugang' ist nur das Abbild der br-zugang.js – das darf jeder Tab angleichen. */
+  metaSetzen(name, wert) { return this._schreiben('meta', st => st.put(wert, name), name === 'zugang'); },
   sitzungenAlle() { return this._req(this._store('sitzungen', 'readonly').getAll()); },
   sitzungSetzen(rec) { return this._schreiben('sitzungen', st => st.put(rec)); },
   sitzungLoeschen(id) { return this._schreiben('sitzungen', st => st.delete(id)); },
@@ -243,6 +250,7 @@ const Speicher = {
   storeLeeren(name) { return this._schreiben(name, st => st.clear()); },
   /* Kompletter Austausch in EINER Transaktion: scheitert ein put, bleibt der alte Bestand unberührt. */
   allesErsetzen(meta, sitzungen, dokumente) {
+    if (schreibenGesperrt()) return Promise.reject(new Error('Nur lesend – dieser Tab hat kein Schreibrecht'));
     return new Promise((res, rej) => {
       const tx = this.db.transaction(['meta', 'sitzungen', 'dokumente'], 'readwrite');
       tx.oncomplete = () => res();
@@ -414,13 +422,14 @@ async function sitzungFortsetzen() {
     sitzungsMkBytes = base64ZuBytes(g.mk);
     sitzungsSchluessel = await Krypto.mkAusBytes(sitzungsMkBytes);
     sitzungsRolle = g.rolle; ui.rolle = g.rolle;
+    await schreibRechtPruefen();   /* vor dem Nachtrag-Schreiben: ohne Lock bleibt der Tab nur lesend */
     daten = await allesLaden();
     if (darfBearbeiten() && daten.sitzungen.some(s => dirtySitzungen.has(s.id) && s.besetzung)) flushSpeicher();
     else dirtySitzungen.clear();
     return true;
   } catch (e) {
     console.warn('Gemerkte Sitzung ließ sich nicht fortsetzen:', e);
-    sitzungVergessen();
+    sitzungVergessen(); schreibLockFreigeben();
     sitzungsSchluessel = null; sitzungsMkBytes = null; sitzungsRolle = null; ui.rolle = null; daten = null;
     return false;
   }
@@ -524,8 +533,10 @@ function sitzungsstandAuffrischen() {
 
 /* Alle Schreibläufe (Autospeichern, Import) laufen nacheinander über diese Kette – nie zwei gleichzeitig. */
 let speicherKette = Promise.resolve();
+let speicherOffen = 0;               /* angestoßene, noch nicht abgeschlossene Schreibläufe (für ungespeichert()) */
 function speicherReihe(fn) {
-  const p = speicherKette.then(fn);
+  speicherOffen++;
+  const p = speicherKette.then(fn).finally(() => { speicherOffen--; });
   speicherKette = p.catch(() => {});
   return p;
 }
@@ -639,11 +650,14 @@ async function projektDateiSpeichern() {
     const name = 'BR-Sitzungen' + (daten.stammdaten.firma ? '_' + daten.stammdaten.firma.replace(/[^\wäöüÄÖÜß-]+/g, '-') : '') +
       '_Rev' + String(revision).padStart(4, '0') + '_' + zeitTag + '_' + zeitUhr + '.brenc.json';
     dateiHerunterladen(new Blob([JSON.stringify(datei)], { type: 'application/json' }), name);
-    /* Direkt (ohne speichern()) persistieren, damit der Änderungsstand nicht weiterzählt. */
-    daten.revision = revision;
-    daten.zuletztGesichert = vermerk;
-    daten.exportStand = daten.aenderungsstand || 0;
-    await metaAllesSchreiben();
+    /* Direkt (ohne speichern()) persistieren, damit der Änderungsstand nicht weiterzählt.
+       Nur der schreibende Tab vermerkt die Sicherung – ein Lese-Tab gibt nur die Datei aus, sein veralteter Stand bliebe sonst in der Datenbank. */
+    if (darfBearbeiten()) {
+      daten.revision = revision;
+      daten.zuletztGesichert = vermerk;
+      daten.exportStand = daten.aenderungsstand || 0;
+      await metaAllesSchreiben();
+    }
     aktualisiereSicherungInfo();
     zeigeToast('Sicherung „' + name + '" erstellt. Bitte auf dem Netzlaufwerk ablegen.', 'erfolg');
   } catch (e) {
@@ -1116,19 +1130,24 @@ async function projektBeitreten(datei) {
     sitzungsRolle = inst.rolle; ui.rolle = inst.rolle;
     aktuellesZugang = zugang;
     await Speicher.metaSetzen('zugang', zugang);
+    /* Schreibrecht VOR jedem Ersetzen klären: hält ein anderer Tab den Lock, bleibt die Datenbank unberührt (Tab nur lesend, mit Hinweis).
+       Der Viewer hält den Lock nur für das Ersetzen. */
+    await schreibRechtPruefen();
+    const viewerLock = inst.rolle === 'viewer' && await schreibLockHolen();
+    const darfErsetzen = darfBearbeiten() || viewerLock;
     /* Vorhandenen Browserstand nicht stillschweigend überschreiben: gleiches Projekt und gleich alt oder jünger → nur entsperren, sonst fragen. */
     let lokal = null;
     if (await Speicher.metaHolen('appmeta')) {
       try { lokal = await allesLaden(); }
       catch (e) { console.warn('Browserstand nicht lesbar (anderer Schlüssel) – wird ersetzt:', e); dirtySitzungen.clear(); }
     }
-    let ersetzen = true;
+    let ersetzen = darfErsetzen;
     if (lokal) {
       daten = lokal;
       const fRev = projekt.revision || 0, lRev = lokal.revision || 0;
       const fAm = (projekt.zuletztGesichert && projekt.zuletztGesichert.am) || null;
       const lAm = (lokal.zuletztGesichert && lokal.zuletztGesichert.am) || null;
-      if (gleichesProjekt && (fRev < lRev || (fRev === lRev && fAm === lAm))) {
+      if (!darfErsetzen || (gleichesProjekt && (fRev < lRev || (fRev === lRev && fAm === lAm)))) {
         ersetzen = false;
       } else {
         const wahl = await browserstandErsetzenAbfrage(gleichesProjekt
@@ -1140,7 +1159,7 @@ async function projektBeitreten(datei) {
           ersetzen = daten.revision !== vorher;   /* Sicherung abgebrochen/gescheitert → Browserstand bleibt */
         } else ersetzen = wahl === 'ersetzen';
       }
-    }
+    } else if (!darfErsetzen) daten = migriere(projekt);   /* nur anzeigen, nicht speichern */
     if (ersetzen) {
       const neu = migriere(projekt);
       neu.exportStand = neu.aenderungsstand || 0;
@@ -1148,11 +1167,16 @@ async function projektBeitreten(datei) {
       daten = neu; dirtySitzungen.clear();
     } else if (darfBearbeiten() && daten.sitzungen.some(s => dirtySitzungen.has(s.id) && s.besetzung)) flushSpeicher();
     else dirtySitzungen.clear();
+    if (viewerLock) schreibLockFreigeben();
     sitzungMerken();
     await appStarten(); sperrschirmWeg();
     zeigeToast('Angemeldet als ' + (inst.rolle === 'admin' ? 'Debug-Mode' : (inst.rolle === 'arbeit' ? 'Arbeitsmodus' : 'Nur-Lese-Ansicht')) + '.' +
-      (ersetzen ? '' : ' Geöffnet wurde der Stand in diesem Browser; eine ältere Sicherung lässt sich über „Öffnen" laden.'), 'erfolg');
+      (ersetzen ? '' : !darfErsetzen
+        ? ' Ein anderer Tab bearbeitet gerade – die Sicherung wurde nicht in diesen Browser übernommen' +
+          (nurLesendWeilAndererTab ? '; nach „Bearbeitung hier übernehmen" lässt sie sich über „Öffnen" laden.' : '.')
+        : ' Geöffnet wurde der Stand in diesem Browser; eine ältere Sicherung lässt sich über „Öffnen" laden.'), 'erfolg');
   } catch (e) {
+    schreibLockFreigeben();   /* Anmeldung gescheitert: der Sperrschirm hält kein Schreibrecht fest */
     zeigeToast('Die Sicherung ließ sich nicht öffnen (Passwort passt nicht zu dieser Sicherung oder Datei beschädigt).', 'fehler');
   }
 }
