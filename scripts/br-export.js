@@ -822,6 +822,10 @@ function oeffneStammdaten() {
         '<button class="btn btn-klein" id="sdPwArbeit">Arbeits-Passwort ändern</button>' +
         '<button class="btn btn-klein" id="sdPwAdmin">Debug-Mode-Passwort ändern</button>') +
       knoepfe('<button class="btn btn-klein btn-primaer" id="sdZugangDownload">Zugangsdatei (br-zugang.js) herunterladen</button>') +
+      '<div style="margin-top:14px"><label class="pruefreihe"><input type="checkbox" id="sdEdgeWarnung"' + (aktuellesZugang && aktuellesZugang.edgeWarnung ? ' checked' : '') + '> ' +
+        'Vor dem Login warnen, wenn Microsoft Edge verwendet wird</label></div>' +
+      '<p class="klein-grau">Die Warnung erscheint bei jedem Start unter Edge auf dem Login-Schirm. Sie steht in der Zugangsdatei und gilt erst für alle, ' +
+        'wenn diese neu heruntergeladen und in „scripts" gelegt wird.</p>' +
       '<h3 class="dlg-sektion adm-zweite">Gefahrenbereich</h3>' +
       '<p class="klein-grau">Entfernt sämtliche Sitzungen, Personen und Anlagen aus dem Speicher dieses Browsers. ' +
         'Nicht als Datei gesicherte Daten gehen verloren.</p>' +
@@ -1477,6 +1481,11 @@ function oeffneStammdaten() {
   dlg.querySelector('#sdZugangDownload').onclick = () => {
     zugangsdateiHerunterladen();
     zeigeToast('Zugangsdatei erzeugt. Bitte br-zugang.js in den Unterordner „scripts" auf dem Laufwerk legen (bestehende ersetzen).', 'erfolg');
+  };
+  dlg.querySelector('#sdEdgeWarnung').onchange = async e => {
+    if (e.target.checked) aktuellesZugang.edgeWarnung = true; else delete aktuellesZugang.edgeWarnung;
+    await Speicher.metaSetzen('zugang', aktuellesZugang);
+    zeigeToast('Edge-Warnung ' + (e.target.checked ? 'eingeschaltet' : 'ausgeschaltet') + '. Bitte jetzt „Zugangsdatei (br-zugang.js) herunterladen" und die Datei in den Unterordner „scripts" legen, damit es für alle gilt.', 'erfolg');
   };
   dlg.querySelector('#sdReset').onclick = () => bestaetigen('Wirklich alles zurücksetzen?',
     'Sämtliche Sitzungen, Mitglieder und Anlagen werden aus dem Zwischenspeicher dieses Browsers entfernt. Nicht als Datei gesicherte Daten gehen verloren.',

@@ -194,7 +194,9 @@ Anwesenheitsliste, Niederschrift) nach den einschlägigen Vorschriften des BetrV
    für das Protokollmodul – ohne eine solche Datei lässt sich kein Modul öffnen. Passwörter lassen sich später im Admin-Menü
    unter **„Zugang & System"** ändern; danach **„Zugangsdatei (br-zugang.js)
    herunterladen"** und die Datei in den Ordner `scripts` legen – erst dann gilt das neue
-   Passwort für alle.
+   Passwort für alle. Im selben Reiter lässt sich eine **Edge-Warnung** einschalten: Sie erscheint
+   dann bei jedem Start unter Microsoft Edge auf dem Login-Schirm (steht in der Zugangsdatei, gilt also
+   nach dem Ablegen für alle Rechner und beide Module).
 4. Im **Admin-Menü** (nur mit dem Debug-Mode-Passwort) Stammdaten und Personen (BR/SBV/JAV) erfassen.
 5. **Sitzung anlegen**, Tagesordnung aufstellen, protokollieren, als PDF
    exportieren.

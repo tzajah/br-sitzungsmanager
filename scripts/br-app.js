@@ -1249,6 +1249,11 @@ async function sperren() {
 }
 
 /* Sperrschirm */
+/* Microsoft Edge (Desktop „Edg/", Mobil „EdgA/", „EdgiOS/"). */
+function istEdge() {
+  return !!(navigator.userAgentData?.brands?.some(b => b.brand === 'Microsoft Edge') || /\bEdg(A|iOS)?\//.test(navigator.userAgent));
+}
+
 function zeigeSperrschirm(modus, kontext) {
   let el = document.getElementById('sperrschirm');
   if (!el) { el = document.createElement('div'); el.id = 'sperrschirm'; el.className = 'sperrschirm'; document.body.appendChild(el); }
@@ -1271,6 +1276,8 @@ function zeigeSperrschirm(modus, kontext) {
         '<div class="ueberzeile">Betriebsrat</div>' +
         '<div class="doppelkante"></div>' +
         '<p>Bitte die Speicherdatei (Sicherung <code>.brenc.json</code>) auswählen. Danach wird das Passwort abgefragt: das <b>Viewer-Passwort</b> öffnet die Nur-Lese-Ansicht, das <b>Arbeits-Passwort</b> den Bearbeitungsmodus.</p>' +
+        (aktuellesZugang && aktuellesZugang.edgeWarnung && istEdge()
+          ? '<div class="hinweis warnung" id="edgeWarnung">Sie verwenden Microsoft Edge. Unter Edge ist es bereits zu einer beschädigten Speicherdatei gekommen. Bitte öffnen Sie die Anwendung nach Möglichkeit in Google Chrome.</div>' : '') +
         '<button class="btn btn-primaer" id="pwDatei">Datei laden</button>' +
       '</div>';
     el.querySelector('#pwDatei').onclick = beitretenPerDatei;

@@ -3089,6 +3089,25 @@ async function pruefeEchtePersistenz() {
   console.log('OK  Echte Persistenz: Schließen, gleichzeitiges Schreiben, Schreibfehler, Import-Rollback, Besetzungs-Nachtrag, Transaktionsabbruch, späte Anlage, Löschen, laufendes Schreiben');
 }
 
+/* Edge-Warnung: Flag edgeWarnung im Zugang UND Edge-UserAgent → Hinweis auf dem Login-Schirm, sonst nicht. */
+async function pruefeEdgeWarnung() {
+  const browser = await chromium.launch();
+  const { zugang } = await testZugang();
+  const EDGE_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36 Edg/130.0.0.0';
+  for (const [flag, ua, erwartet] of [[true, EDGE_UA, true], [true, undefined, false], [false, EDGE_UA, false]]) {
+    const kontext = await browser.newContext(ua ? { userAgent: ua } : {});
+    await kontext.addInitScript(zugangInitSkript(flag ? Object.assign({}, zugang, { edgeWarnung: true }) : zugang));
+    const seite = await kontext.newPage();
+    await seite.goto(DATEI('BR-Sitzungsmanager.html'));
+    await seite.waitForSelector('#sperrschirm #pwDatei');
+    assert.strictEqual(await seite.locator('#sperrschirm #edgeWarnung').count(), erwartet ? 1 : 0, 'Edge-Warnung: Flag ' + flag + ', Edge-UA ' + !!ua);
+    if (erwartet) assert.ok(await seite.locator('#edgeWarnung').isVisible(), 'die Warnung ist sichtbar');
+    await kontext.close();
+  }
+  await browser.close();
+  console.log('OK  Edge-Warnung: nur mit Flag und Edge-UserAgent');
+}
+
 (async () => {
   await pruefe('BR-Sitzungsmanager.html', 'sitzung');
   await pruefe('BR-Protokoll.html', 'protokoll');
@@ -3108,6 +3127,7 @@ async function pruefeEchtePersistenz() {
   await pruefeAdminMenue();
   await pruefeEinladungsMail();
   await pruefeAnmeldung();
+  await pruefeEdgeWarnung();
   await pruefeErstinbetriebnahme();
   await pruefeOffenSchliessenUndSicherungNeuOeffnen();
   await pruefeBrowserstandBeimOeffnen();
