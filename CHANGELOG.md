@@ -20,6 +20,44 @@ veröffentlichten Releases).
   Reiter „Tagesordnung“ jetzt die volle Breite ein, statt nach wenigen Zeichen abzuschneiden.
 - **„14:00 Uhr Uhr“ in der Einladungs-Mail.** Beginn und voraussichtliches Ende trugen das
   „Uhr“ doppelt, weil die Zeitformatierung es bereits anhängt.
+- **Schließen und Speichern verloren Änderungen.** Wer während des Speicherns weitertippte
+  oder schnell schloss, konnte jüngste Änderungen verlieren, und ein Speicherlauf konnte
+  einen anderen überholen. Jetzt läuft immer nur ein Speichern, „Schließen“ wartet darauf
+  und schreibt auch Änderungen nach, die währenddessen entstehen. Als gespeichert gilt eine
+  Änderung erst, wenn der Browser das Schreiben abgeschlossen hat; schlägt es fehl, bleibt
+  sie als ungespeichert vorgemerkt – auch nach einem fehlgeschlagenen Löschen einer Sitzung.
+- **Falsche Sitzung gespeichert.** Das Löschen einer Anlage, ein Anlagen-Upload und das Löschen
+  einer Sitzung schrieben unter Umständen die falsche Sitzung. Eingebettete Anlagen lassen
+  sich außerdem wieder entfernen.
+- **Import konnte den Bestand zerstören.** Eine Sicherung ersetzt den Bestand jetzt in einem
+  Schritt; bricht der Import ab, bleibt der bisherige Stand unverändert. Eigene Exporte
+  lassen sich wieder einlesen, und Sitzungsnummern sind eindeutig.
+- **Wiederöffnen überschrieb einen neueren Browserstand.** Beim Wiederöffnen einer Datei
+  gewinnt jetzt der neuere Stand; nach einem Passwortwechsel entstehen die Sicherungen
+  weiter korrekt, und beim Verlassen der Seite wird zuvor gespeichert.
+- **Nur ein Tab schreibt.** Ist die Sitzung in mehreren Tabs offen, darf nur einer
+  schreiben; die übrigen zeigen nur an und schreiben auf keinem Weg, auch nicht über
+  Sicherung oder Autospeichern. Erhält ein Lese-Tab später das Schreibrecht, lädt er zuerst
+  den aktuellen Stand neu. Der Übernahme-Hinweis bleibt auch nach einem Ladefehler stehen.
+- **Anwesenheit in älteren Protokollen veränderte sich.** Die Besetzung wird jetzt zum
+  Sitzungsstand eingefroren, sodass spätere Änderungen an den Mitgliedern die Anwesenheit
+  vergangener Sitzungen nicht verfälschen. Die Ergebnis-Übergabe nimmt die Besetzung mit,
+  gleicht Punkte über ihre Kennung ab (auch gelöschte TOPs) und erhält den Status; wird das
+  Protokoll wieder geöffnet, wird die Besetzung aufgehoben. Eine bewusst aufgehobene
+  Besetzung wird beim Laden nicht nachgetragen, die Tagesordnungs-Übergabe überschreibt sie
+  nicht, „Abschließen“ behält sie, und ein Statuswechsel zeichnet Anwesenheit und Beschluss-
+  fähigkeit neu. Bei Übernahme oder später erhaltenem Schreibrecht wird die Besetzung nachgetragen.
+- **Duplikat verlor Unterpunkte.** Ein dupliziertes Element übernimmt jetzt seine Unterpunkte;
+  die Kategorien des Gremiums werden nicht mehr von den Vorgaben überschrieben.
+- **PDF: Tabellenzeilen brachen schlecht um.** Lange Zeilen werden jetzt sauber über
+  Seitengrenzen umbrochen.
+
+### Sicherheit
+- **Fremde Inhalte aus Sicherungen können keinen Code mehr einschleusen.** Kennungen und
+  Tag-Farben aus importierten Dateien werden geprüft bzw. maskiert, auch an weiteren Stellen
+  der Oberfläche. Die Anlagen-Vorschau zeigt nur noch PDF, Bilder und Text direkt an; alle
+  anderen Typen werden heruntergeladen.
+
 
 ### Geändert (Admin-Menü)
 - **„Gremium & Mitglieder“ heißt jetzt „Admin-Menü“** – mit Zahnrad-Symbol in der
@@ -132,6 +170,9 @@ veröffentlichten Releases).
   läuft deshalb auch in einem frischen Klon.
 
 ### Geändert
+- **Browser-Tests prüfen das echte Speichern** (Schließen, gleichzeitiges Schreiben,
+  Schreibfehler, Import-Rückfall, Besetzungs-Nachtrag, späteres Schreibrecht). Jeder Lauf
+  legt dafür einen eigenen Test-Zugang an.
 - **Die Kategorie ist optional.** Jede Auswahl beginnt mit „– ohne –“; neue TOPs und
   Unterpunkte starten ohne Kategorie. Bisher setzte die App stillschweigend die erste
   Kategorie – beim Anlegen, beim Laden älterer Standard-TOPs und bei der Übernahme aus
