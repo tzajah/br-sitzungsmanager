@@ -2750,6 +2750,12 @@ async function pruefeEinSchreibenderTab() {
   assert.strictEqual((await metaGespeichert(seite1)).revision, metaVorher.revision, 'Revision in der IndexedDB unverändert');
   await seite3.close();
 
+  /* Abgeschlossene Altsitzung ohne Besetzung in der Datenbank: Tab 2 muss sie bei der Übernahme nachtragen und schreiben. */
+  await seite1.evaluate(`(async () => {
+    const s = Object.assign(neueSitzung(daten), { id: 'zzz-alt-ohne', status: 'abgeschlossen', datum: '2026-05-05' }); delete s.besetzung;
+    daten.personen.push({ id: 'p-nachtrag', name: 'Nachtrag Person', gruppe: 'br', funktion: 'Vorsitzende/r', aktiv: true }); dirtyMeta = true;
+    const { iv, ct } = await Krypto.chiffriere(sitzungsSchluessel, s); await Speicher.sitzungSetzen({ id: s.id, iv, ct });
+  })()`);
   await seite1.evaluate(`(async () => { daten.sitzungen[0].ort = 'Raum Tab 1'; await speichern(true); await sperren(); })()`);
   /* Laden scheitert: Lock wird wieder abgegeben, Hinweis und Knopf bleiben für einen neuen Versuch; auch ein erneutes Schreibrecht-Prüfen bleibt lesend. */
   await seite2.evaluate(`window.allesLadenOrig = allesLaden; allesLaden = () => Promise.reject(new Error('Test'))`);
@@ -2761,10 +2767,13 @@ async function pruefeEinSchreibenderTab() {
   /* Später bekommt der bisher lesende Tab das Schreibrecht über schreibRechtPruefen() (Beitritt/Fortsetzen/Start): erst neu laden. */
   await seite2.evaluate('allesLaden = window.allesLadenOrig');
   assert.notStrictEqual(await seite2.evaluate('daten.sitzungen[0].ort'), 'Raum Tab 1', 'Lese-Tab hat noch den alten Stand');
-  await seite2.evaluate('schreibRechtPruefen()');
-  assert.strictEqual(await seite2.evaluate('daten.sitzungen[0].ort'), 'Raum Tab 1', 'Schreibrecht über Prüfen lädt vorher den aktuellen Stand');
+  await seite2.click('#schreibUebernehmen');
   await seite2.waitForFunction('darfBearbeiten()', null, { timeout: 5000 });
   assert.strictEqual(await seite2.evaluate('daten.sitzungen[0].ort'), 'Raum Tab 1', 'Übernahme lädt den Stand von Tab 1');
+  await seite2.waitForFunction(`speicherOffen === 0 && !speicherTimer && dirtySitzungen.size === 0`, null, { timeout: 5000 });
+  const nachtrag = await seite2.evaluate(`(async () => { const rec = (await Speicher.sitzungenAlle()).find(r => r.id === 'zzz-alt-ohne');
+    return (await Krypto.dechiffriere(sitzungsSchluessel, rec.iv, rec.ct)).besetzung; })()`);
+  assert.ok(nachtrag && nachtrag.mitglieder, 'Übernahme schreibt die nachgetragene Besetzung in die IndexedDB');
   await seite2.evaluate(`(async () => { daten.sitzungen[0].titel = 'Titel Tab 2'; await speichern(true); })()`);
   const g = await gespeichert(seite2);
   assert.strictEqual(g.ort, 'Raum Tab 1', 'Ort von Tab 1 bleibt erhalten');
@@ -2928,7 +2937,7 @@ async function pruefeEchtePersistenz() {
     const r = await seite.evaluate(`(async () => {
       const mk = window.__mk;
       const roh = (id, extra) => Object.assign(neueSitzung(daten), { id, status: 'abgeschlossen', datum: '2026-05-05' }, extra);
-      const a = roh('alt-ohne'); delete a.besetzung;
+      const a = roh('zzz-alt-ohne'); delete a.besetzung;
       const b = roh('alt-aufgehoben', { besetzung: null });
       await Speicher.storeLeeren('sitzungen');
       for (const s of [a, b]) { const { iv, ct } = await Krypto.chiffriere(mk.key, s); await Speicher.sitzungSetzen({ id: s.id, iv, ct }); }
@@ -2940,7 +2949,7 @@ async function pruefeEchtePersistenz() {
       const stand = daten.aenderungsstand;
       await flushSpeicher();
       const nachher = await leseGespeichert();
-      return { fort, vorherA: vorher['alt-ohne'].besetzung, nachherA: nachher['alt-ohne'].besetzung,
+      return { fort, vorherA: vorher['zzz-alt-ohne'].besetzung, nachherA: nachher['zzz-alt-ohne'].besetzung,
                nachherB: nachher['alt-aufgehoben'].besetzung, stand, standNach: daten.aenderungsstand, dirty: dirtySitzungen.size,
                imSpeicherB: daten.sitzungen.find(s => s.id === 'alt-aufgehoben').besetzung };
     })()`);

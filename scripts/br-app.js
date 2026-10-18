@@ -178,10 +178,15 @@ function schreibLockFreigeben() {
 /* Beim Entsperren aufrufen: ohne Lock wird der Tab nur-lesend und zeigt Hinweis samt Übernahme-Knopf. */
 /* Aktuellen Stand der Datenbank laden (vor dem Schreibrecht eines bisher lesenden Tabs, sonst würde veralteter Stand zurückgeschrieben). */
 async function standNeuLaden() {
+  dirtyMeta = false; dirtySitzungen.clear();   /* vor dem Laden: allesLaden() merkt Besetzungs-Nachträge selbst vor */
   try { daten = await allesLaden(); } catch (e) { return false; }
-  dirtyMeta = false; dirtySitzungen.clear();
   if (!daten.sitzungen.some(s => s.id === ui.sitzungId)) ui.sitzungId = daten.sitzungen[0] ? daten.sitzungen[0].id : null;
   return true;
+}
+/* Nachgetragene Besetzungen schreiben – erst nach Freigabe des Schreibrechts (darfBearbeiten()). */
+function besetzungNachtragSchreiben() {
+  if (darfBearbeiten() && daten.sitzungen.some(s => dirtySitzungen.has(s.id) && s.besetzung)) flushSpeicher();
+  else dirtySitzungen.clear();
 }
 async function schreibRechtPruefen() {
   if (!(sitzungsRolle === 'arbeit' || sitzungsRolle === 'admin')) return;
@@ -190,6 +195,7 @@ async function schreibRechtPruefen() {
   /* War der Tab bisher nur lesend, ist sein Stand evtl. veraltet: erst neu laden, sonst lesend bleiben. */
   if (hatLock && warLesend && !(await standNeuLaden())) { schreibLockLoslassen(); hatLock = false; }
   nurLesendWeilAndererTab = !hatLock;
+  if (hatLock && warLesend) besetzungNachtragSchreiben();
   const h = document.getElementById('schreibHinweis');
   if (!nurLesendWeilAndererTab) { if (h) h.remove(); return; }
   if (h) return;
@@ -203,6 +209,7 @@ async function schreibRechtPruefen() {
     /* Erst den Stand der Datenbank laden, dann Bearbeiten freigeben – sonst würde veralteter Stand zurückgeschrieben. */
     if (!(await standNeuLaden())) { schreibLockLoslassen(); nurLesendWeilAndererTab = true; return zeigeToast('Aktueller Stand ließ sich nicht laden.', 'fehler'); }
     nurLesendWeilAndererTab = false; el.remove();
+    besetzungNachtragSchreiben();
     aktualisiereRollenUi(); renderAlles();
     zeigeToast('Bearbeitung in diesem Tab übernommen.', 'erfolg');
   };
