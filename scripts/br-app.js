@@ -146,7 +146,59 @@ function istAdmin() { return sitzungsRolle === 'admin'; }
 /* Admin-Menü: nur mit Debug-Mode-Passwort und nur im Sitzungsmanager. */
 function adminMenueVerfuegbar() { return istAdmin() && modusHatAnsicht('stammdaten'); }
 /* Viewer darf nur lesen. */
-function darfBearbeiten() { return sitzungsRolle === 'arbeit' || sitzungsRolle === 'admin'; }
+function darfBearbeiten() { return !nurLesendWeilAndererTab && (sitzungsRolle === 'arbeit' || sitzungsRolle === 'admin'); }
+
+/* Nur ein Tab darf schreiben (sonst überschreiben sich zwei Tabs derselben IndexedDB gegenseitig): Web Lock pro Datenbank.
+   Ohne navigator.locks bleibt das bisherige Verhalten. */
+let nurLesendWeilAndererTab = false;
+let schreibLockFrei = null;           /* gesetzt = dieser Tab hält den Lock */
+const SCHREIB_LOCK = 'br-schreiben-' + DB_NAME;
+function schreibLockHolen() {
+  if (schreibLockFrei || !navigator.locks) return Promise.resolve(true);
+  return new Promise(res => {
+    navigator.locks.request(SCHREIB_LOCK, { mode: 'exclusive', ifAvailable: true }, lock => {
+      if (!lock) { res(false); return; }
+      return new Promise(frei => { schreibLockFrei = frei; res(true); });
+    });
+  });
+}
+function schreibLockFreigeben() {
+  if (schreibLockFrei) schreibLockFrei();
+  schreibLockFrei = null; nurLesendWeilAndererTab = false;
+  const h = typeof document !== 'undefined' && document.getElementById('schreibHinweis'); if (h) h.remove();
+}
+/* Beim Entsperren aufrufen: ohne Lock wird der Tab nur-lesend und zeigt Hinweis samt Übernahme-Knopf. */
+async function schreibRechtPruefen() {
+  if (!(sitzungsRolle === 'arbeit' || sitzungsRolle === 'admin')) return;
+  nurLesendWeilAndererTab = !(await schreibLockHolen());
+  const h = document.getElementById('schreibHinweis');
+  if (!nurLesendWeilAndererTab) { if (h) h.remove(); return; }
+  if (h) return;
+  const el = document.createElement('div');
+  el.id = 'schreibHinweis'; el.className = 'toast fehler'; el.setAttribute('role', 'status');
+  el.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9999;padding:8px 16px;text-align:center;border-radius:0';
+  el.innerHTML = 'In einem anderen Tab geöffnet – hier nur lesend. <button class="btn" id="schreibUebernehmen">Bearbeitung hier übernehmen</button>';
+  document.body.appendChild(el);
+  document.getElementById('schreibUebernehmen').onclick = async () => {
+    if (!(await schreibLockHolen())) return zeigeToast('Der andere Tab ist noch geöffnet – bitte dort „Datei schließen" wählen.', 'fehler');
+    /* Erst den Stand der Datenbank laden, dann Bearbeiten freigeben – sonst würde veralteter Stand zurückgeschrieben. */
+    try { daten = await allesLaden(); } catch (e) { schreibLockFreigeben(); nurLesendWeilAndererTab = true; return zeigeToast('Aktueller Stand ließ sich nicht laden.', 'fehler'); }
+    dirtyMeta = false; dirtySitzungen.clear();
+    if (!daten.sitzungen.some(s => s.id === ui.sitzungId)) ui.sitzungId = daten.sitzungen[0] ? daten.sitzungen[0].id : null;
+    nurLesendWeilAndererTab = false; el.remove();
+    aktualisiereRollenUi(); renderAlles();
+    zeigeToast('Bearbeitung in diesem Tab übernommen.', 'erfolg');
+  };
+}
+
+/* Reload/Schließen: Warnung bei ungespeicherten Änderungen; beim Ausblenden sofort schreiben (Schreiben beim Entladen ist nicht verlässlich). */
+function ungespeichert() { return !!sitzungsSchluessel && darfBearbeiten() && (dirtyMeta || dirtySitzungen.size > 0 || !!speicherTimer); }
+if (typeof window.addEventListener === 'function') {
+  window.addEventListener('beforeunload', e => { if (ungespeichert()) { e.preventDefault(); e.returnValue = ''; } });
+  function sofortSpeichern() { if (ungespeichert()) { clearTimeout(speicherTimer); speicherTimer = null; flushSpeicher(); } }
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') sofortSpeichern(); });
+  window.addEventListener('pagehide', sofortSpeichern);
+}
 
 /* Speicher-Adapter (IndexedDB): Async-API bewusst wie ein künftiges HTTP-/SQLite-Backend geschnitten – die „Naht" für späteren Serverbetrieb. */
 const Speicher = {
@@ -453,10 +505,10 @@ function speichern(sofort) {
   daten.aenderungsstand = (daten.aenderungsstand || 0) + 1;
   dirtyMeta = true;
   if (ui.sitzungId) dirtySitzungen.add(ui.sitzungId);
-  clearTimeout(speicherTimer);
+  clearTimeout(speicherTimer); speicherTimer = null;
   sitzungsstandAuffrischen();
   if (sofort) return flushSpeicher();
-  speicherTimer = setTimeout(flushSpeicher, 500);
+  speicherTimer = setTimeout(() => { speicherTimer = null; flushSpeicher(); }, 500);
 }
 
 /* Sitzungsstand und Stand-Punkte im Inhaltsverzeichnis hängen an speichern() statt an jedem einzelnen Eingabeweg,
@@ -554,6 +606,11 @@ async function sicherungVerpacken(mk, zugang, nutzlast) {
 async function sicherungEntpacken(d, passwort) {
   const auf = await zugangEntsperren(d.zugang, passwort);
   return Krypto.dechiffriere(auf.mk, new Uint8Array(d.iv), base64ZuBytes(d.ct).buffer);
+}
+/* Mit dem bereits entsperrten Hauptschlüssel – der bleibt beim Passwortwechsel gleich, so öffnen sich auch Sicherungen mit altem Zugangsblock. null = anderer Schlüssel (anderes Projekt). */
+async function sicherungMitMk(d, mk) {
+  try { return await Krypto.dechiffriere(mk, new Uint8Array(d.iv), base64ZuBytes(d.ct).buffer); }
+  catch (e) { return null; }
 }
 
 async function projektDateiSpeichern() {
@@ -859,9 +916,12 @@ async function projektDateiOeffnen(datei) {
     let projekt;
     if (d && d.format === 'enc-v2') {
       if (!d.zugang) return zeigeToast('Sicherung ohne Zugang – bitte eine aktuelle Sicherung verwenden.', 'fehler');
-      const passwort = await passwortAbfrage('Sicherung entschlüsseln', 'Bitte Ihr Passwort (Arbeitsmodus oder Debug-Mode) eingeben.');
-      if (passwort == null) return;
-      projekt = await sicherungEntpacken(d, passwort);
+      projekt = await sicherungMitMk(d, sitzungsSchluessel);
+      if (!projekt) {
+        const passwort = await passwortAbfrage('Sicherung entschlüsseln', 'Bitte das Passwort dieser Sicherung (Arbeitsmodus oder Debug-Mode) eingeben.');
+        if (passwort == null) return;
+        projekt = await sicherungEntpacken(d, passwort);
+      }
       /* Installation (br-zugang.js) bleibt maßgeblich: der Schlüssel der Sicherung dient nur zum Entschlüsseln, gespeichert wird unter dem aktuellen Installations-MK. */
     } else if (d && d.format === 'enc-v1') {
       const passwort = await passwortAbfrage('Sicherung entschlüsseln', 'Bitte das Passwort dieser Sicherungsdatei eingeben.');
@@ -999,6 +1059,26 @@ function passwortDoppeltAbfrage(titel, text) {
   });
 }
 
+/* Liefert 'ersetzen', 'sichern' (erst Browserstand als Sicherung ablegen, dann ersetzen) oder null (Browserstand behalten). */
+function browserstandErsetzenAbfrage(grund) {
+  return new Promise(res => {
+    const dlg = document.getElementById('dlgBestaetigen');
+    let wahl = null;
+    dlg.innerHTML = '<div class="dlg-kopf"><h3>Browserstand ersetzen?</h3></div>' +
+      '<div class="dlg-koerper"><p>' + esc(grund) + ' Soll der Stand in diesem Browser durch die Datei ersetzt werden? ' +
+      'Bei „Abbrechen" wird der Browserstand geöffnet.</p></div>' +
+      '<div class="dlg-fuss"><button class="btn" id="beAbbr">Abbrechen</button>' +
+      '<button class="btn" id="beSichern">Erst sichern, dann ersetzen</button>' +
+      '<button class="btn btn-gefahr" id="beErsetzen">Ersetzen</button></div>';
+    /* close deckt auch Escape ab. */
+    dlg.onclose = () => { dlg.onclose = null; res(wahl); };
+    dlg.querySelector('#beAbbr').onclick = () => dlg.close();
+    dlg.querySelector('#beSichern').onclick = () => { wahl = 'sichern'; dlg.close(); };
+    dlg.querySelector('#beErsetzen').onclick = () => { wahl = 'ersetzen'; dlg.close(); };
+    dlg.showModal();
+  });
+}
+
 /* Beitritt an neuem Rechner: vorhandene Sicherung öffnen (enthält den Zugang); auch vom Sperrschirm genutzt. */
 function beitretenPerDatei() {
   const inp = document.getElementById('dateiBeitritt');
@@ -1021,18 +1101,57 @@ async function projektBeitreten(datei) {
     let inst;
     try { inst = await zugangEntsperren(zugang, passwort); }
     catch (e) { return zeigeToast('Falsches Passwort für die lokale br-zugang.js.', 'fehler'); }
-    const projekt = await sicherungEntpacken(d, passwort);
+    /* Gleicher Hauptschlüssel = gleiches Projekt. Sonst mit dem eingegebenen, notfalls einem eigens abgefragten Passwort der Sicherung. */
+    let projekt = await sicherungMitMk(d, inst.mk);
+    const gleichesProjekt = !!projekt;
+    if (!projekt) {
+      try { projekt = await sicherungEntpacken(d, passwort); }
+      catch (e) {
+        const altPw = await passwortAbfrage('Passwort der Sicherung', 'Diese Sicherung wurde mit einem anderen Passwort erstellt. Bitte das Passwort der Sicherung eingeben.');
+        if (altPw == null) return;
+        projekt = await sicherungEntpacken(d, altPw);
+      }
+    }
     sitzungsSchluessel = inst.mk; sitzungsMkBytes = inst.mkBytes;
     sitzungsRolle = inst.rolle; ui.rolle = inst.rolle;
     aktuellesZugang = zugang;
     await Speicher.metaSetzen('zugang', zugang);
-    const neu = migriere(projekt);
-    neu.exportStand = neu.aenderungsstand || 0;
-    await speicherReihe(() => alleDatenErsetzenP(neu, projekt.dokumentInhalte));
-    daten = neu;
+    /* Vorhandenen Browserstand nicht stillschweigend überschreiben: gleiches Projekt und gleich alt oder jünger → nur entsperren, sonst fragen. */
+    let lokal = null;
+    if (await Speicher.metaHolen('appmeta')) {
+      try { lokal = await allesLaden(); }
+      catch (e) { console.warn('Browserstand nicht lesbar (anderer Schlüssel) – wird ersetzt:', e); dirtySitzungen.clear(); }
+    }
+    let ersetzen = true;
+    if (lokal) {
+      daten = lokal;
+      const fRev = projekt.revision || 0, lRev = lokal.revision || 0;
+      const fAm = (projekt.zuletztGesichert && projekt.zuletztGesichert.am) || null;
+      const lAm = (lokal.zuletztGesichert && lokal.zuletztGesichert.am) || null;
+      if (gleichesProjekt && (fRev < lRev || (fRev === lRev && fAm === lAm))) {
+        ersetzen = false;
+      } else {
+        const wahl = await browserstandErsetzenAbfrage(gleichesProjekt
+          ? 'Die Datei (Rev. ' + fRev + ') ist neuer als der Stand in diesem Browser (Rev. ' + lRev + ') oder weicht von ihm ab.'
+          : 'Die Datei gehört zu einem anderen Projekt als der Stand in diesem Browser.');
+        if (wahl === 'sichern') {
+          const vorher = daten.revision;
+          await projektDateiSpeichern();
+          ersetzen = daten.revision !== vorher;   /* Sicherung abgebrochen/gescheitert → Browserstand bleibt */
+        } else ersetzen = wahl === 'ersetzen';
+      }
+    }
+    if (ersetzen) {
+      const neu = migriere(projekt);
+      neu.exportStand = neu.aenderungsstand || 0;
+      await speicherReihe(() => alleDatenErsetzenP(neu, projekt.dokumentInhalte));
+      daten = neu; dirtySitzungen.clear();
+    } else if (darfBearbeiten() && daten.sitzungen.some(s => dirtySitzungen.has(s.id) && s.besetzung)) flushSpeicher();
+    else dirtySitzungen.clear();
     sitzungMerken();
     await appStarten(); sperrschirmWeg();
-    zeigeToast('Angemeldet als ' + (inst.rolle === 'admin' ? 'Debug-Mode' : (inst.rolle === 'arbeit' ? 'Arbeitsmodus' : 'Nur-Lese-Ansicht')) + '.', 'erfolg');
+    zeigeToast('Angemeldet als ' + (inst.rolle === 'admin' ? 'Debug-Mode' : (inst.rolle === 'arbeit' ? 'Arbeitsmodus' : 'Nur-Lese-Ansicht')) + '.' +
+      (ersetzen ? '' : ' Geöffnet wurde der Stand in diesem Browser; eine ältere Sicherung lässt sich über „Öffnen" laden.'), 'erfolg');
   } catch (e) {
     zeigeToast('Die Sicherung ließ sich nicht öffnen (Passwort passt nicht zu dieser Sicherung oder Datei beschädigt).', 'fehler');
   }
@@ -1077,6 +1196,7 @@ async function sperren() {
     }
   } while (dirtyMeta || dirtySitzungen.size);
   sitzungVergessen();
+  schreibLockFreigeben();
   sitzungsSchluessel = null; sitzungsMkBytes = null;
   sitzungsRolle = null; ui.rolle = null;
   zeigeSperrschirm('login');

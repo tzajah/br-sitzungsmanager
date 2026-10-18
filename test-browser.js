@@ -1806,22 +1806,33 @@ async function anmeldenPerDatei(seite, datei, passwort = TEST_PW.arbeit) {
   await seite.waitForSelector('#sperrschirm', { state: 'detached', timeout: 15000 });
 }
 /* Sicherung (enc-v2) mit einer Sitzung und dem TOP „Original", unter dem Testzugang verschlüsselt. */
-async function testSicherung(seite) {
+/* Optional: `zusatz` (z. B. { revision: 2 }), TOP-Titel und `fremd` = eigener Hauptschlüssel (anderes Projekt, gleiche Passwörter). */
+async function testSicherung(seite, { zusatz = {}, titel = 'Original', fremd = false } = {}) {
   return seite.evaluate(`(async () => {
-    const auf = await zugangEntsperren(window.BR_ZUGANG, '${TEST_PW.arbeit}');
-    const projekt = leeresProjekt();
-    const s = neueSitzung(projekt); s.datum = '2026-08-12'; s.tops = [neuerTop({ titel: 'Original' })];
+    let mk = (await zugangEntsperren(window.BR_ZUGANG, '${TEST_PW.arbeit}')).mk, zugang = window.BR_ZUGANG;
+    if (${fremd}) { const neu = await Krypto.zufallsMk(); mk = neu.key; zugang = await zugangErzeugen(neu.bytes, ${JSON.stringify(TEST_PW)}); }
+    const projekt = Object.assign(leeresProjekt(), ${JSON.stringify(zusatz)});
+    const s = neueSitzung(projekt); s.datum = '2026-08-12'; s.tops = [neuerTop({ titel: ${JSON.stringify(titel)} })];
     projekt.sitzungen = [s];
-    const { iv, ct } = await Krypto.chiffriere(auf.mk, projekt);
-    return JSON.stringify({ app: 'br-sitzungsmanager', format: 'enc-v2', zugang: window.BR_ZUGANG,
+    const { iv, ct } = await Krypto.chiffriere(mk, projekt);
+    return JSON.stringify({ app: 'br-sitzungsmanager', format: 'enc-v2', zugang: zugang,
                             iv: Array.from(iv), ct: bytesZuBase64(new Uint8Array(ct)) });
   })()`);
+}
+/* Wie anmeldenPerDatei, aber bis zur Frage „Browserstand ersetzen?" – der Sperrschirm bleibt dabei stehen. */
+async function anmeldenBisErsetzenFrage(seite, datei) {
+  await seite.waitForSelector('#sperrschirm #pwDatei');
+  const [wahl] = await Promise.all([seite.waitForEvent('filechooser'), seite.click('#pwDatei')]);
+  await wahl.setFiles({ name: 'Test.brenc.json', mimeType: 'application/json', buffer: Buffer.from(datei) });
+  await seite.fill('#pwEingabe', TEST_PW.arbeit);
+  await seite.click('#pwOk');
+  await seite.waitForSelector('#dlgBestaetigen #beErsetzen', { timeout: 15000 });
 }
 
 /* OFFEN (bekannter Fehler, Review-Fund 11): Sicherung öffnen → TOP ändern → speichern → „Datei schließen" → dieselbe Sicherung erneut
    öffnen. Richtig wäre: die jüngere Browser-Änderung bleibt erhalten (oder es wird gefragt). Aktuell ersetzt die Sicherung die Daten
    stillschweigend. Meldet „OFFEN" statt zu scheitern; wer den App-Fehler behebt, setzt OFFEN_SICHERUNG_UEBERSCHREIBT auf false. */
-const OFFEN_SICHERUNG_UEBERSCHREIBT = true;
+const OFFEN_SICHERUNG_UEBERSCHREIBT = false;
 async function pruefeOffenSchliessenUndSicherungNeuOeffnen() {
   const browser = await chromium.launch();
   const fehler = [];
@@ -1846,6 +1857,56 @@ async function pruefeOffenSchliessenUndSicherungNeuOeffnen() {
   await seite.evaluate(`indexedDB.deleteDatabase('br-sitzungsmanager')`);
   assert.deepStrictEqual(fehler, [], 'keine Laufzeitfehler');
   await browser.close();
+}
+
+/* Browserstand beim Öffnen: neuere Datei → Frage, Ersetzen wirkt; fremdes Projekt → Frage, Abbrechen behält den Browserstand;
+   nach Passwortwechsel öffnet das neue Passwort eine alte Sicherung ohne Zusatzabfrage (gleicher Hauptschlüssel). */
+async function pruefeBrowserstandBeimOeffnen() {
+  const browser = await chromium.launch();
+  const fehler = [];
+  const seite = await (await kontextMitZugang(browser)).newPage();
+  seite.on('pageerror', e => fehler.push('pageerror: ' + e.message));
+  await seite.goto(DATEI('BR-Sitzungsmanager.html'));
+  await seite.waitForFunction('typeof APP_MODUS !== "undefined"', null, { timeout: 5000 });
+  const titelImSpeicher = () => seite.evaluate('allesLaden().then(d => d.sitzungen[0].tops[0].titel)');
+  const sicherung = await testSicherung(seite);
+  await anmeldenPerDatei(seite, sicherung);
+  await seite.evaluate(`(async () => { daten.sitzungen[0].tops[0].titel = 'Neu im Browser'; await speichern(true); await sperren(); })()`);
+
+  /* Fremdes Projekt: Frage erscheint, Abbrechen öffnet den Browserstand. */
+  await anmeldenBisErsetzenFrage(seite, await testSicherung(seite, { titel: 'Fremd', fremd: true }));
+  await seite.click('#beAbbr');
+  await seite.waitForSelector('#sperrschirm', { state: 'detached', timeout: 15000 });
+  assert.strictEqual(await seite.evaluate('daten.sitzungen[0].tops[0].titel'), 'Neu im Browser', 'fremdes Projekt, Abbrechen: Browserstand bleibt');
+  assert.strictEqual(await titelImSpeicher(), 'Neu im Browser', 'fremdes Projekt, Abbrechen: IndexedDB unverändert');
+  await seite.evaluate('sperren()');
+
+  /* Neuere Datei desselben Projekts: Frage erscheint, Ersetzen übernimmt die Datei. */
+  await anmeldenBisErsetzenFrage(seite, await testSicherung(seite, { titel: 'Datei neuer', zusatz: { revision: 3 } }));
+  await seite.click('#beErsetzen');
+  await seite.waitForSelector('#sperrschirm', { state: 'detached', timeout: 15000 });
+  assert.strictEqual(await seite.evaluate('daten.sitzungen[0].tops[0].titel'), 'Datei neuer', 'neuere Datei ersetzt den Browserstand');
+  assert.strictEqual(await titelImSpeicher(), 'Datei neuer', 'neuere Datei steht auch in der IndexedDB');
+  assert.strictEqual(await seite.evaluate('daten.revision'), 3, 'Revision der Datei übernommen');
+
+  /* Passwortwechsel: gleicher Hauptschlüssel, neues Arbeits-Passwort; alte Sicherung trägt den alten Zugangsblock. */
+  const zugangNeu = await seite.evaluate(`(async () => {
+    const auf = await zugangEntsperren(window.BR_ZUGANG, '${TEST_PW.arbeit}');
+    return zugangErzeugen(auf.mkBytes, { viewer: '${TEST_PW.viewer}', arbeit: 'worktest-neu', admin: '${TEST_PW.admin}' });
+  })()`);
+  await seite.evaluate(`indexedDB.deleteDatabase('br-sitzungsmanager')`);
+  const kontext2 = await browser.newContext();
+  await kontext2.addInitScript(zugangInitSkript(zugangNeu));
+  const seite2 = await kontext2.newPage();
+  seite2.on('pageerror', e => fehler.push('pageerror: ' + e.message));
+  await seite2.goto(DATEI('BR-Sitzungsmanager.html'));
+  await anmeldenPerDatei(seite2, sicherung, 'worktest-neu');   /* scheitert mit Zusatzabfrage (Sperrschirm bliebe stehen) */
+  assert.strictEqual(await seite2.evaluate('daten.sitzungen[0].tops[0].titel'), 'Original', 'alte Sicherung mit neuem Passwort geöffnet');
+  await seite2.evaluate(`indexedDB.deleteDatabase('br-sitzungsmanager')`);
+
+  assert.deepStrictEqual(fehler, [], 'keine Laufzeitfehler');
+  await browser.close();
+  console.log('OK  Browserstand beim Öffnen: neuere Datei/fremdes Projekt fragen nach, alte Sicherung nach Passwortwechsel');
 }
 
 /* Anmeldung: nur „Datei laden", Reload ohne Passwort, „Datei schließen" sperrt wieder.
@@ -2619,6 +2680,70 @@ async function echteSeite(browser, fehler) {
   return { seite, ids };
 }
 
+/* Nur ein Tab schreibt (Web Lock je Datenbank); Reload/Ausblenden verliert keine Änderung. */
+async function pruefeEinSchreibenderTab() {
+  const browser = await chromium.launch();
+  const fehler = [];
+  const kontext = await kontextMitZugang(browser);
+  const oeffnen = async sicherung => {
+    const s = await kontext.newPage();
+    s.on('pageerror', e => fehler.push('pageerror: ' + e.message));
+    await s.goto(DATEI('BR-Sitzungsmanager.html'));
+    await s.waitForFunction('typeof APP_MODUS !== "undefined" && !!Speicher.db', null, { timeout: 5000 });
+    return s;
+  };
+  const gespeichert = s => s.evaluate(`(async () => {
+    const out = {};
+    for (const rec of await Speicher.sitzungenAlle()) out[rec.id] = await Krypto.dechiffriere(sitzungsSchluessel, rec.iv, rec.ct);
+    return Object.values(out)[0];
+  })()`);
+  const seite1 = await oeffnen();
+  const sicherung = await testSicherung(seite1);
+  await anmeldenPerDatei(seite1, sicherung);
+  assert.ok(await seite1.evaluate('darfBearbeiten()'), 'erster Tab darf bearbeiten');
+  assert.ok(!(await seite1.evaluate('!!document.getElementById("schreibHinweis")')), 'erster Tab ohne Hinweis');
+
+  const seite2 = await oeffnen();
+  await anmeldenPerDatei(seite2, sicherung);
+  assert.ok(!(await seite2.evaluate('darfBearbeiten()')), 'zweiter Tab ist nur lesend');
+  assert.ok((await seite2.textContent('#schreibHinweis')).includes('In einem anderen Tab geöffnet'), 'Hinweis im zweiten Tab');
+  await seite2.evaluate(`(async () => { daten.sitzungen[0].ort = 'Nur Tab 2'; await speichern(true); })()`);
+  assert.notStrictEqual((await gespeichert(seite2)).ort, 'Nur Tab 2', 'Änderung im Lese-Tab wird nicht geschrieben');
+  await seite2.click('#schreibUebernehmen');
+  assert.ok(!(await seite2.evaluate('darfBearbeiten()')), 'Übernahme scheitert, solange Tab 1 den Lock hält');
+
+  await seite1.evaluate(`(async () => { daten.sitzungen[0].ort = 'Raum Tab 1'; await speichern(true); await sperren(); })()`);
+  await seite2.click('#schreibUebernehmen');
+  await seite2.waitForFunction('darfBearbeiten()', null, { timeout: 5000 });
+  assert.strictEqual(await seite2.evaluate('daten.sitzungen[0].ort'), 'Raum Tab 1', 'Übernahme lädt den Stand von Tab 1');
+  await seite2.evaluate(`(async () => { daten.sitzungen[0].titel = 'Titel Tab 2'; await speichern(true); })()`);
+  const g = await gespeichert(seite2);
+  assert.strictEqual(g.ort, 'Raum Tab 1', 'Ort von Tab 1 bleibt erhalten');
+  assert.strictEqual(g.titel, 'Titel Tab 2', 'Titel von Tab 2 gespeichert');
+
+  /* Reload/Ausblenden: Warnung und Sofort-Speichern */
+  const r = await seite2.evaluate(`(async () => {
+    daten.sitzungen[0].ort = 'Vor Reload'; speichern();
+    const ev = new Event('beforeunload', { cancelable: true }); window.dispatchEvent(ev);
+    Object.defineProperty(document, 'visibilityState', { get: () => 'hidden', configurable: true });
+    document.dispatchEvent(new Event('visibilitychange'));
+    await speicherKette;
+    const rec = (await Speicher.sitzungenAlle())[0];
+    return { gewarnt: ev.defaultPrevented, timer: speicherTimer, dirty: dirtyMeta || dirtySitzungen.size > 0,
+             ort: (await Krypto.dechiffriere(sitzungsSchluessel, rec.iv, rec.ct)).ort,
+             nachher: (() => { const e2 = new Event('beforeunload', { cancelable: true }); window.dispatchEvent(e2); return e2.defaultPrevented; })() };
+  })()`);
+  assert.ok(r.gewarnt, 'beforeunload warnt bei ungespeicherten Änderungen');
+  assert.strictEqual(r.ort, 'Vor Reload', 'Ausblenden schreibt sofort');
+  assert.ok(!r.dirty && !r.timer, 'nichts mehr vorgemerkt');
+  assert.ok(!r.nachher, 'nach dem Schreiben keine Warnung mehr');
+
+  await seite2.evaluate(`indexedDB.deleteDatabase('br-sitzungsmanager')`);
+  assert.deepStrictEqual(fehler, [], 'keine Laufzeitfehler');
+  await browser.close();
+  console.log('OK  Ein schreibender Tab, Warnung und Sofort-Speichern beim Ausblenden');
+}
+
 async function pruefeEchtePersistenz() {
   const browser = await chromium.launch();
   const fehler = [];
@@ -2890,8 +3015,10 @@ async function pruefeEchtePersistenz() {
   await pruefeAnmeldung();
   await pruefeErstinbetriebnahme();
   await pruefeOffenSchliessenUndSicherungNeuOeffnen();
+  await pruefeBrowserstandBeimOeffnen();
   await pruefeVerlaufUmbrueche();
   await pruefeProtokollInhalt();
   await pruefeEchtePersistenz();
+  await pruefeEinSchreibenderTab();
   console.log('\nAlle Browser-Prüfungen bestanden.');
 })().catch(e => { console.error(e); process.exit(1); });

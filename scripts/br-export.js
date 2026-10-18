@@ -1594,6 +1594,7 @@ function verkabeln() {
 }
 
 async function appStarten() {
+  await schreibRechtPruefen();
   /* Reihenfolge bewusst: externe Dateien haben Vorrang, „Gremium" kommt zuletzt und überschreibt die Einzeldateien. */
   let externUebernommen = externeStandardTopsUebernehmen();
   if (externeVorlagenUebernehmen()) externUebernommen = true;
@@ -1629,7 +1630,7 @@ async function appStarten() {
   renderAlles();
   const startLabel = darfBearbeiten()
     ? 'Angemeldet als ' + (istAdmin() ? 'Debug-Mode' : 'Arbeitsmodus') + ' · Änderungen werden verschlüsselt gespeichert.'
-    : 'Nur-Lese-Ansicht · zum Bearbeiten mit dem Arbeits-Passwort anmelden.';
+    : (nurLesendWeilAndererTab ? 'In einem anderen Tab geöffnet – hier nur lesend.' : 'Nur-Lese-Ansicht · zum Bearbeiten mit dem Arbeits-Passwort anmelden.');
   setAutosaveInfo(startLabel);
   aktualisiereSicherungInfo();
 }
