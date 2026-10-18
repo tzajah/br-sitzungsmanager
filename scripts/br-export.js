@@ -550,11 +550,11 @@ const PRAES_JS = `
 /* Nur Nutzertexte werden per esc() eingesetzt; das eingebettete Deck-JS ist statisch (kein XSS-Risiko). */
 function praesentationHtml(daten, s) {
   const st = daten.stammdaten || {};
-  const logo = st.logo && st.logo.dataUrl ? st.logo.dataUrl : '';
+  const logo = st.logo && /^data:image\/(png|jpeg|gif|webp|svg\+xml);base64,[A-Za-z0-9+\/=]+$/.test(st.logo.dataUrl || '') ? st.logo.dataUrl : '';
   const kopfLinks = esc([st.gremium || 'Betriebsrat', st.firma].filter(Boolean).join(' · '));
   const nrDatum = 'Nr. ' + esc(s.nr || '–') + (s.datum ? ' · ' + esc(fmtDatum(s.datum, true)) : '');
   const kopf = '<div class="kopf"><div class="kopf-l">' + kopfLinks + '</div>' +
-    '<div class="kopf-r"><span>' + nrDatum + '</span>' + (logo ? '<img class="logo" src="' + logo + '" alt="">' : '') + '</div></div>';
+    '<div class="kopf-r"><span>' + nrDatum + '</span>' + (logo ? '<img class="logo" src="' + esc(logo) + '" alt="">' : '') + '</div></div>';
 
   const metaTeile = [esc(SITZUNGSART_LABEL[s.art] || 'Sitzung')];
   if (s.beginn) metaTeile.push(esc(s.beginn + (s.endeGeplant ? '–' + s.endeGeplant : '') + ' Uhr'));
@@ -1321,9 +1321,9 @@ function oeffneStammdaten() {
     r.onload = () => {
       try {
         const txt = String(r.result);
-        const a = txt.indexOf('['), b = txt.lastIndexOf(']');
+        const t2 = externesArrayText(txt), a = t2.indexOf('['), b = t2.lastIndexOf(']');
         if (a < 0 || b < a) throw new Error('kein Array');
-        const norm = urlaubNormieren(JSON.parse(txt.slice(a, b + 1)), true);
+        const norm = urlaubNormieren(JSON.parse(t2.slice(a, b + 1)), true);
         if (!norm.length) throw new Error('leer');
         daten.urlaub = norm; speichern(); renderUrlaub();
         zeigeToast(norm.length + ' Abwesenheit(en) aus Datei übernommen.', 'erfolg');
@@ -1375,9 +1375,9 @@ function oeffneStammdaten() {
     r.onload = () => {
       try {
         const txt = String(r.result);
-        const a = txt.indexOf('['), b = txt.lastIndexOf(']');
+        const t2 = externesArrayText(txt), a = t2.indexOf('['), b = t2.lastIndexOf(']');
         if (a < 0 || b < a) throw new Error('kein Array');
-        const arr = JSON.parse(txt.slice(a, b + 1));
+        const arr = JSON.parse(t2.slice(a, b + 1));
         const norm = (arr || []).filter(t => t && t.titel).map(t => ({
           id: uid(), titel: String(t.titel).trim(),
           kategorie: kategorieOderLeer(t.kategorie),
@@ -1398,9 +1398,9 @@ function oeffneStammdaten() {
     r.onload = () => {
       try {
         const txt = String(r.result);
-        const a = txt.indexOf('['), b = txt.lastIndexOf(']');
+        const t2 = externesArrayText(txt), a = t2.indexOf('['), b = t2.lastIndexOf(']');
         if (a < 0 || b < a) throw new Error('kein Array');
-        const arr = JSON.parse(txt.slice(a, b + 1));
+        const arr = JSON.parse(t2.slice(a, b + 1));
         const norm = (arr || []).filter(t => t && (t.titel || t.text)).map(t => ({ id: uid(), titel: String(t.titel || '').trim(), text: String(t.text || '') }));
         if (!norm.length) throw new Error('leer');
         daten.protokollVorlagen = norm; speichern(); renderVorlagen();
@@ -1417,9 +1417,9 @@ function oeffneStammdaten() {
     r.onload = () => {
       try {
         const txt = String(r.result);
-        const a = txt.indexOf('['), b = txt.lastIndexOf(']');
+        const t2 = externesArrayText(txt), a = t2.indexOf('['), b = t2.lastIndexOf(']');
         if (a < 0 || b < a) throw new Error('kein Array');
-        const arr = JSON.parse(txt.slice(a, b + 1));
+        const arr = JSON.parse(t2.slice(a, b + 1));
         const norm = (arr || []).filter(t => t && (t.titel || t.text)).map(t => ({ id: uid(), titel: String(t.titel || '').trim(), text: String(t.text || '') }));
         if (!norm.length) throw new Error('leer');
         daten.beschlussVorlagen = norm; speichern(); renderBeschlussVorlagen();
@@ -1436,9 +1436,9 @@ function oeffneStammdaten() {
     r.onload = () => {
       try {
         const txt = String(r.result);
-        const a = txt.indexOf('['), b = txt.lastIndexOf(']');
+        const t2 = externesArrayText(txt), a = t2.indexOf('['), b = t2.lastIndexOf(']');
         if (a < 0 || b < a) throw new Error('kein Array');
-        const arr = JSON.parse(txt.slice(a, b + 1));
+        const arr = JSON.parse(t2.slice(a, b + 1));
         const belegt = new Set();
         const norm = (arr || []).filter(k => k && (k.key || k.label)).map(k => {
           const key = String(k.key || kategorieSchluessel(k.label, belegt)).trim();

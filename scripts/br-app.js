@@ -171,14 +171,24 @@ const Speicher = {
     return new Promise((res, rej) => { anfrage.onsuccess = () => res(anfrage.result); anfrage.onerror = () => rej(anfrage.error); });
   },
   metaHolen(name) { return this._req(this._store('meta', 'readonly').get(name)); },
-  metaSetzen(name, wert) { return this._req(this._store('meta', 'readwrite').put(wert, name)); },
+  /* Schreiben gilt erst mit tx.oncomplete als dauerhaft – onsuccess der Anfrage reicht nicht, die Transaktion kann danach noch abbrechen. */
+  _schreiben(name, op) {
+    return new Promise((res, rej) => {
+      const tx = this.db.transaction(name, 'readwrite');
+      tx.oncomplete = () => res();
+      tx.onerror = ev => rej((ev.target && ev.target.error) || tx.error);
+      tx.onabort = () => rej(tx.error || new Error('Transaktion abgebrochen'));
+      try { op(tx.objectStore(name)); } catch (e) { tx.abort(); rej(e); }
+    });
+  },
+  metaSetzen(name, wert) { return this._schreiben('meta', st => st.put(wert, name)); },
   sitzungenAlle() { return this._req(this._store('sitzungen', 'readonly').getAll()); },
-  sitzungSetzen(rec) { return this._req(this._store('sitzungen', 'readwrite').put(rec)); },
-  sitzungLoeschen(id) { return this._req(this._store('sitzungen', 'readwrite').delete(id)); },
+  sitzungSetzen(rec) { return this._schreiben('sitzungen', st => st.put(rec)); },
+  sitzungLoeschen(id) { return this._schreiben('sitzungen', st => st.delete(id)); },
   dokumentHolen(id) { return this._req(this._store('dokumente', 'readonly').get(id)); },
-  dokumentSetzen(rec) { return this._req(this._store('dokumente', 'readwrite').put(rec)); },
-  dokumentLoeschen(id) { return this._req(this._store('dokumente', 'readwrite').delete(id)); },
-  storeLeeren(name) { return this._req(this._store(name, 'readwrite').clear()); },
+  dokumentSetzen(rec) { return this._schreiben('dokumente', st => st.put(rec)); },
+  dokumentLoeschen(id) { return this._schreiben('dokumente', st => st.delete(id)); },
+  storeLeeren(name) { return this._schreiben(name, st => st.clear()); },
   /* Kompletter Austausch in EINER Transaktion: scheitert ein put, bleibt der alte Bestand unberührt. */
   allesErsetzen(meta, sitzungen, dokumente) {
     return new Promise((res, rej) => {
@@ -1521,7 +1531,7 @@ function renderHaupt() {
     };
     c.querySelector('#kLoeschen').onclick = () => bestaetigen('Sitzung löschen?',
       'Die Sitzung Nr. ' + s.nr + ' wird mit Tagesordnung, Protokoll und allen Anlagen endgültig entfernt.',
-      () => { const wegId = s.id; daten.sitzungen = daten.sitzungen.filter(x => x.id !== wegId); ui.sitzungId = daten.sitzungen[0] ? daten.sitzungen[0].id : null; dirtySitzungen.delete(wegId); Speicher.sitzungLoeschen(wegId).catch(() => {}); speichern(true); renderAlles(); },
+      () => sitzungLoeschen(s),
       'Endgültig löschen', true);
   }
   c.querySelectorAll('.tabs button').forEach(b => b.onclick = () => {
@@ -2303,6 +2313,29 @@ function sitzungAnlegen() {
   ui.ansicht = 'sitzung';
   speichern();
   renderAlles();
+}
+
+/* Löschen läuft durch die Schreibkette: ein laufender Flush schreibt die Sitzung zuerst fertig, das Löschen kommt danach
+   und kann sie so nicht wiederbeleben. Scheitert es, kommt die Sitzung zurück in den Speicher und der Fehler wird gezeigt. */
+async function sitzungLoeschen(s) {
+  const wegId = s.id, pos = daten.sitzungen.indexOf(s);
+  daten.sitzungen = daten.sitzungen.filter(x => x.id !== wegId);
+  ui.sitzungId = daten.sitzungen[0] ? daten.sitzungen[0].id : null;
+  dirtySitzungen.delete(wegId);
+  renderAlles();
+  try {
+    await speicherReihe(() => Speicher.sitzungLoeschen(wegId));
+  } catch (e) {
+    console.warn('Löschen fehlgeschlagen:', e);
+    if (!daten.sitzungen.some(x => x.id === wegId)) daten.sitzungen.splice(Math.max(0, Math.min(pos, daten.sitzungen.length)), 0, s);
+    ui.sitzungId = wegId;
+    ui.speicherFehler = true;
+    setAutosaveInfo('Speichern fehlgeschlagen – bitte über „Sichern (Datei)" sichern!', true);
+    zeigeToast('Die Sitzung konnte nicht gelöscht werden.', 'fehler');
+    renderAlles();
+    return;
+  }
+  speichern(true);
 }
 
 function sitzungDuplizieren(quelle) {

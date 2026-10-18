@@ -275,7 +275,7 @@ async function aufteilen(datei, passwort) {
       dokumente: (nutzlast.dokumente || []).length,
       anlagen: anzahlAnlagen,
       anlagenBytes: anlagenBytes,
-      revision: nutzlast.revision || 0,
+      revision: Number(nutzlast.revision) || 0,
       smGroesse: smText.length,
       pmGroesse: pmText.length
     },

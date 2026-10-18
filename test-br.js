@@ -41,6 +41,27 @@ assert.deepStrictEqual(roh(sitzung.modusReiter()), ['sitzung', 'tagesordnung', '
 assert.ok(sitzung.modusHatExport('einladung') && !sitzung.modusHatExport('protokoll'));
 
 const prot = kernLaden('protokoll', []);
+/* Export-Datei (mit Kommentar-Beispiel in eckigen Klammern) lässt sich wieder einlesen */
+{
+  const quelle = fs.readFileSync(path.join(hier, 'br-export.js'), 'utf8');
+  const kopf = /const inhalt = ('\/\* Standard-Tagesordnungspunkte[\s\S]*?\*\/\\n') \+\s*'window\.BR_STANDARD_TOPS = '/.exec(quelle);
+  assert.ok(kopf, 'Export-Kopf gefunden');
+  const rein = [{ titel: 'A [x]', kategorie: '', unterpunkte: [{ titel: 'B' }] }];
+  const datei = eval(kopf[1]) + 'window.BR_STANDARD_TOPS = ' + JSON.stringify(rein, null, 2) + ';\n';
+  const t = sitzung.externesArrayText(datei);
+  assert.deepStrictEqual(JSON.parse(t.slice(t.indexOf('['), t.lastIndexOf(']') + 1)), rein, 'Export -> Import ist verlustfrei');
+  console.log('OK  Import exportierter Standard-TOP-Dateien trotz Kommentar mit [ ]');
+}
+
+/* Sitzungsnummer: höchste laufende Nummer + 1, auch nach Löschungen */
+{
+  const j = 2026, mk = nr => ({ nr: nr, datum: '2026-01-01' });
+  assert.strictEqual(sitzung.neueSitzungsNummer({ sitzungen: [] }, j), '01/2026');
+  assert.strictEqual(sitzung.neueSitzungsNummer({ sitzungen: [mk('01/2026'), mk('03/2026')] }, j), '04/2026', 'Lücke führt nicht zu Doppelvergabe');
+  assert.strictEqual(sitzung.neueSitzungsNummer({ sitzungen: [mk('07/2025'), mk('Sonder'), mk('02/2026')] }, j), '03/2026', 'fremde Jahre/Formate ignoriert');
+  console.log('OK  Neue Sitzungsnummer = höchste Nummer des Jahres + 1');
+}
+
 assert.strictEqual(prot.APP_MODUS, 'protokoll');
 assert.deepStrictEqual(roh(prot.modusReiter()), ['tagesordnung', 'protokoll', 'export']);
 assert.ok(prot.modusHatReiter('tagesordnung'), 'die Tagesordnung führen beide Module');
@@ -208,6 +229,17 @@ console.log('OK  Geplante Anwesenheit und Gästeliste reisen mit, überschreiben
   k.ergebnisseEinspielen(alt, ohneFlag);
   assert.strictEqual(alt.tops[1].beschluesse.length, 1, 'ältere Datei: nicht gelistete TOPs bleiben unberührt');
   assert.strictEqual(alt.beginnTatsaechlich, '16:00', 'ältere Datei: leere Zeit überschreibt nicht');
+
+  /* Im Protokoll ganz gelöschter TOP fehlt in der vollständigen Datei: Ergebnisse entfallen, der TOP bleibt. */
+  const geloescht = lokal(), ohneT2 = datei();
+  ohneT2.punkte.pop();
+  const bilG = k.ergebnisseEinspielen(geloescht, ohneT2);
+  assert.strictEqual(geloescht.tops.length, 2, 'gelöschter TOP bleibt im Sitzungsmanager');
+  assert.strictEqual(geloescht.tops[1].beschluesse.length, 0, 'Beschlüsse des gelöschten TOPs entfallen');
+  assert.ok(bilG.entfallen.beschluesse.some(b => b.id === 'b3' && b.status === 'intern'), 'entfallen enthält den gepflegten Beschluss des gelöschten TOPs');
+  const ohneT2Flag = datei(); ohneT2Flag.punkte.pop(); delete ohneT2Flag.vollstaendig;
+  const altG = lokal();
+  assert.ok(!k.ergebnisseEinspielen(altG, ohneT2Flag).entfallen.beschluesse.some(b => b.id === 'b3'), 'ältere Datei: fehlender TOP entfällt nicht');
 
   const prot = lokal(); prot.besetzung = { am: '2026-01-01', groesse: 3, mitglieder: [] };
   const ziel = lokal();

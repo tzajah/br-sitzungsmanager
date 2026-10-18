@@ -2708,9 +2708,90 @@ async function pruefeEchtePersistenz() {
     await seite.context().close();
   }
 
+  /* 6) Transaktion bricht NACH dem erfolgreichen put ab: das darf nicht als gespeichert gelten */
+  {
+    const { seite, ids } = await echteSeite(browser, fehler);
+    const a = ids[0];
+    const r = await seite.evaluate(`(async () => {
+      const origPut = IDBObjectStore.prototype.put;
+      IDBObjectStore.prototype.put = function (...arg) {
+        const req = origPut.apply(this, arg), tx = this.transaction;
+        req.addEventListener('success', () => tx.abort());
+        return req;
+      };
+      const s = daten.sitzungen[0];
+      s.ort = 'Abgebrochen';
+      const ok = await speichern(true);
+      const markiert = dirtySitzungen.has(s.id), fehlerFlag = ui.speicherFehler, vorher = (await leseGespeichert())[s.id].ort;
+      IDBObjectStore.prototype.put = origPut;
+      const ok2 = await flushSpeicher();
+      return { ok, markiert, fehlerFlag, vorher, ok2, nachher: (await leseGespeichert())[s.id].ort };
+    })()`);
+    assert.strictEqual(r.ok, false, 'abgebrochene Transaktion: flush meldet false');
+    assert.ok(r.markiert && r.fehlerFlag, 'Markierung bleibt, Fehlerzustand gesetzt');
+    assert.notStrictEqual(r.vorher, 'Abgebrochen', 'nichts geschrieben');
+    assert.strictEqual(r.ok2, true);
+    assert.strictEqual(r.nachher, 'Abgebrochen', 'der nächste Lauf schreibt nach');
+    await seite.context().close();
+  }
+
+  /* 7) Anlage kommt erst nach dem Sitzungswechsel an: sie gehört trotzdem der Sitzung, in der der Upload begann */
+  {
+    const { seite, ids } = await echteSeite(browser, fehler);
+    const [a, b] = ids;
+    const r = await seite.evaluate(`(async () => {
+      document.getElementById('dateiAnlagen').click = () => {};
+      ui.sitzungId = '${a}';
+      const s = daten.sitzungen.find(x => x.id === '${a}');
+      const div = document.createElement('div');
+      renderAnlagenWidget(div, s.anlagenTO, '');
+      div.querySelector('[data-tu="neu"]').click();
+      ui.sitzungId = '${b}';                              /* Wechsel, während die Datei noch gelesen wird */
+      anlagenZielCallback([{ id: 'anl1', name: 'spaet.pdf', mime: 'application/pdf', size: 3, dataUrl: 'data:,x' }]);
+      const ok = await flushSpeicher();
+      return { ok, anlagen: ((await leseGespeichert())['${a}'].anlagenTO || []).map(x => x.id) };
+    })()`);
+    assert.strictEqual(r.ok, true);
+    assert.deepStrictEqual(r.anlagen, ['anl1'], 'Anlage ist bei der Ursprungssitzung gespeichert');
+    await seite.context().close();
+  }
+
+  /* 8) Sitzung löschen: Fehler wird gezeigt und die Sitzung bleibt; ein laufender Flush belebt sie nicht wieder */
+  {
+    const { seite, ids } = await echteSeite(browser, fehler);
+    const [a, b] = ids;
+    const r = await seite.evaluate(`(async () => {
+      const erg = {};
+      const orig = Speicher.sitzungLoeschen.bind(Speicher);
+      Speicher.sitzungLoeschen = () => Promise.reject(new Error('Platte voll'));
+      await sitzungLoeschen(daten.sitzungen.find(x => x.id === '${a}'));
+      erg.fehler = { speicher: daten.sitzungen.map(s => s.id), gespeichert: Object.keys(await leseGespeichert()),
+                     flag: ui.speicherFehler, toasts: fehlerToasts() };
+      Speicher.sitzungLoeschen = orig;
+
+      const s = daten.sitzungen.find(x => x.id === '${a}');
+      const zurueck = langsam(300);
+      s.ort = 'unterwegs'; ui.sitzungId = s.id; const lauf = speichern(true);   /* Flush schreibt a gerade */
+      await new Promise(res => setTimeout(res, 50));
+      s.titel = 'vorgemerkt'; dirtySitzungen.add(s.id);                       /* und a ist schon wieder vorgemerkt */
+      await sitzungLoeschen(s);
+      await lauf; zurueck(); await flushSpeicher();
+      erg.race = { speicher: daten.sitzungen.map(s => s.id), gespeichert: Object.keys(await leseGespeichert()), dirty: dirtySitzungen.has('${a}') };
+      return erg;
+    })()`);
+    assert.ok(r.fehler.speicher.includes(a), 'Löschfehler: Sitzung bleibt im Arbeitsspeicher');
+    assert.ok(r.fehler.gespeichert.includes(a), 'und im Speicher');
+    assert.ok(r.fehler.flag, 'Fehlerzustand gesetzt');
+    assert.ok(r.fehler.toasts.some(t => /nicht gelöscht/.test(t)), 'Fehlermeldung: ' + JSON.stringify(r.fehler.toasts));
+    assert.deepStrictEqual(r.race.speicher, [b], 'gelöscht im Arbeitsspeicher');
+    assert.deepStrictEqual(r.race.gespeichert, [b], 'laufender Flush belebt die gelöschte Sitzung nicht wieder');
+    assert.strictEqual(r.race.dirty, false, 'keine Vormerkung bleibt für die gelöschte Sitzung');
+    await seite.context().close();
+  }
+
   assert.deepStrictEqual(fehler, [], 'keine Laufzeitfehler');
   await browser.close();
-  console.log('OK  Echte Persistenz: Schließen, gleichzeitiges Schreiben, Schreibfehler, Import-Rollback, Besetzungs-Nachtrag');
+  console.log('OK  Echte Persistenz: Schließen, gleichzeitiges Schreiben, Schreibfehler, Import-Rollback, Besetzungs-Nachtrag, Transaktionsabbruch, späte Anlage, Löschen');
 }
 
 (async () => {

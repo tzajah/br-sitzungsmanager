@@ -385,7 +385,7 @@ function beschlussBlock(s, top, b, bi, neuZeichnen, updater) {
   el.className = 'beschluss-block';
   el.innerHTML =
     '<div class="bb-kopf"><span class="bb-nr">Beschluss Nr. ' +
-      '<input data-f="lfd" type="number" min="1" class="bb-lfd"> / ' + b.jahr + '</span>' +
+      '<input data-f="lfd" type="number" min="1" class="bb-lfd"> / ' + esc(b.jahr) + '</span>' +
       '<span class="ergebnis-anzeige" data-ergebnis></span>' +
       '<button class="btn btn-symbol btn-geist btn-gefahr" data-tu="weg" title="Beschluss entfernen"><svg class="ic"><use href="#ic-weg"/></svg></button></div>' +
     '<div class="feld"><label>Wortlaut des Beschlusses</label>' +

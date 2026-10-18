@@ -146,6 +146,16 @@ function ergebnisseEinspielen(sitzung, nutzlast) {
     bilanz.beschluesse += ziel.beschluesse.length;
     bilanz.aufgaben += ziel.aufgaben.length;
   }
+  /* Vollständige Dateien listen alle Punkte: fehlt einer, wurde er im Protokoll gelöscht – seine Ergebnisse entfallen.
+     Der Punkt selbst bleibt, er kann nach der Übergabe hier angelegt worden sein. */
+  if (nutzlast.vollstaendig) {
+    const inDatei = new Set((nutzlast.punkte || []).map(e => e.id));
+    for (const [id, ziel] of punkte) {
+      if (inDatei.has(id)) continue;
+      if ((ziel.beschluesse || []).length) ziel.beschluesse = ergebnisListeMischen(ziel.beschluesse, [], bilanz.entfallen.beschluesse);
+      if ((ziel.aufgaben || []).length) ziel.aufgaben = ergebnisListeMischen(ziel.aufgaben, [], bilanz.entfallen.aufgaben);
+    }
+  }
   sitzung.teilnahme = nutzlast.teilnahme || {};
   /* Vollständige Dateien gleichen auch das Fehlen ab (Protokoll wieder geöffnet). null = bewusst aufgehoben,
      damit migriere() nicht wie bei Altdaten nachträgt. */
@@ -246,6 +256,11 @@ const TAG_FARBEN = ['#0E6B57', '#2C5B8A', '#8A6A1C', '#A63A20', '#5E4B8A', '#3C7
 function uid() {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
   return 'id-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
+}
+
+/* Array-Text aus einer exportierten .js-Datei (window.X = [...]); führende Blockkommentare können eckige Klammern enthalten. */
+function externesArrayText(txt) {
+  return String(txt).replace(/^\s*(\/\*[\s\S]*?\*\/\s*)+/, '');
 }
 
 function esc(s) {
@@ -622,7 +637,12 @@ function leeresProjekt() {
 }
 
 function neueSitzungsNummer(daten, jahr) {
-  const n = daten.sitzungen.filter(s => jahrAus(s.datum || s.angelegtAm) === jahr).length + 1;
+  let max = 0;   /* höchste vergebene laufende Nummer des Jahres – Zählen würde nach Löschungen doppelt vergeben */
+  for (const s of daten.sitzungen) {
+    const m = /^(\d+)\/(\d{4})$/.exec(String(s.nr || '').trim());
+    if (m && +m[2] === jahr) max = Math.max(max, +m[1]);
+  }
+  const n = max + 1;
   return String(n).padStart(2, '0') + '/' + jahr;
 }
 

@@ -53,8 +53,11 @@ function renderAnlagenWidget(c, liste, beschriftung, nachAenderung) {
       const i = zeile ? parseInt(zeile.dataset.i, 10) : -1;
       const tu = btn.dataset.tu;
       if (tu === 'neu') {
+        /* Einlesen ist asynchron: die Liste gehört der Sitzung beim Start, nicht der dann gewählten – sonst ginge die Anlage beim Wechsel verloren. */
+        const sid = ui.sitzungId;
         anlagenZielCallback = neue => {
           liste.push(...neue);
+          if (sid) dirtySitzungen.add(sid);
           speichern(); neuZeichnen();
           if (nachAenderung) nachAenderung();
         };
