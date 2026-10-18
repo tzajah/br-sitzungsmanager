@@ -2506,6 +2506,213 @@ async function pruefeProtokollInhalt() {
   console.log('OK  Protokoll: Inhaltsverzeichnis im Rand, springt, markiert die Stelle, scrollt mit');
 }
 
+/* Echte Speicherstrecke: AES-GCM-Schlüssel aus Krypto.zufallsMk(), echtes IndexedDB, speichern()/flush/sperren() unverändert.
+   Anders als AUFBAU (speichern() wirkungslos) wird hier gelesen, was WIRKLICH im Speicher liegt. Jede Prüfung hat einen eigenen
+   Kontext, damit keine Datenbank von einer in die nächste Prüfung wandert. br-zugang.js wird nicht gebraucht: der Schlüssel entsteht
+   in der Seite, der Einstieg über den Sperrschirm bleibt außen vor. */
+const ECHT_EINRICHTEN = `
+  (async () => {
+    if (!Speicher.db) await Speicher.oeffnen();
+    const mk = await Krypto.zufallsMk();
+    window.__mk = mk;
+    ${AUFBAU}
+    sitzungsSchluessel = mk.key; sitzungsMkBytes = mk.bytes;
+    dirtyMeta = false; dirtySitzungen.clear();
+    const zweite = neueSitzung(daten); zweite.datum = '2026-09-09'; zweite.tops = [neuerTop({ titel: 'Zweite' })];
+    daten.sitzungen.push(zweite);
+    await speicherReihe(() => alleDatenErsetzenP(daten));
+    window.leseGespeichert = async () => {
+      const out = {};
+      for (const rec of await Speicher.sitzungenAlle()) out[rec.id] = await Krypto.dechiffriere(window.__mk.key, rec.iv, rec.ct);
+      return out;
+    };
+    window.langsam = ms => {
+      const orig = Speicher.sitzungSetzen.bind(Speicher);
+      Speicher.sitzungSetzen = async r => { await new Promise(res => setTimeout(res, ms)); return orig(r); };
+      return () => { Speicher.sitzungSetzen = orig; };
+    };
+    window.fehlerToasts = () => Array.from(document.querySelectorAll('#toastContainer .toast.fehler')).map(t => t.textContent);
+    return daten.sitzungen.map(s => s.id);
+  })()
+`;
+
+async function echteSeite(browser, fehler) {
+  const kontext = await browser.newContext();
+  const seite = await kontext.newPage();
+  seite.on('pageerror', e => fehler.push('pageerror: ' + e.message));
+  await seite.goto(DATEI('BR-Sitzungsmanager.html'));
+  await seite.waitForFunction('typeof APP_MODUS !== "undefined" && typeof Speicher !== "undefined" && !!Speicher.db', null, { timeout: 5000 });
+  const ids = await seite.evaluate(ECHT_EINRICHTEN);
+  return { seite, ids };
+}
+
+async function pruefeEchtePersistenz() {
+  const browser = await chromium.launch();
+  const fehler = [];
+
+  /* 1) Schließen mitten in der Bearbeitung */
+  {
+    const { seite, ids } = await echteSeite(browser, fehler);
+    const [a, b] = ids;
+    const r = await seite.evaluate(`(async () => {
+      const s = daten.sitzungen[0];
+      s.ort = 'Raum A'; speichern();                 /* Autospeichern (500 ms) läuft noch nicht */
+      await sperren();
+      return { gesperrt: sitzungsSchluessel === null, gespeichert: await leseGespeichert() };
+    })()`);
+    assert.strictEqual(r.gesperrt, true, 'Schließen: Schlüssel entfernt');
+    assert.strictEqual(r.gespeichert[a].ort, 'Raum A', 'Schließen vor dem Autospeichern: die Änderung liegt im Speicher');
+    assert.ok(r.gespeichert[b], 'die unveränderte Sitzung bleibt erhalten');
+    await seite.context().close();
+  }
+  {
+    const { seite, ids } = await echteSeite(browser, fehler);
+    const a = ids[0];
+    const r = await seite.evaluate(`(async () => {
+      const s = daten.sitzungen[0];
+      langsam(300);
+      s.ort = 'Raum A'; speichern(true);                  /* erster Schreibvorgang ist unterwegs */
+      s.titel = 'Zweite Änderung'; speichern();           /* zweite Änderung währenddessen */
+      await sperren();
+      return { gesperrt: sitzungsSchluessel === null, offen: dirtySitzungen.size, gespeichert: await leseGespeichert() };
+    })()`);
+    assert.strictEqual(r.gesperrt, true, 'langsames Schreiben: Datei geschlossen');
+    assert.strictEqual(r.offen, 0, 'nichts bleibt vorgemerkt');
+    assert.strictEqual(r.gespeichert[a].ort, 'Raum A', 'erste Änderung geschrieben');
+    assert.strictEqual(r.gespeichert[a].titel, 'Zweite Änderung', 'zweite Änderung während des Schreibens ebenfalls');
+    await seite.context().close();
+  }
+
+  /* 2) Änderung während eines laufenden Schreibvorgangs derselben Sitzung */
+  {
+    const { seite } = await echteSeite(browser, fehler);
+    const r = await seite.evaluate(`(async () => {
+      const s = daten.sitzungen[0];
+      langsam(300);
+      s.ort = 'Version 1'; const erster = speichern(true);
+      await new Promise(res => setTimeout(res, 80));      /* Schreiben läuft (verschlüsselt ist Version 1) */
+      s.ort = 'Version 2'; speichern();
+      const ok1 = await erster, ok2 = await flushSpeicher();
+      return { ok1, ok2, dirty: dirtySitzungen.size, meta: dirtyMeta, gespeichert: (await leseGespeichert())[s.id],
+               speicher: JSON.parse(JSON.stringify(s)) };
+    })()`);
+    assert.strictEqual(r.ok1 && r.ok2, true, 'beide Läufe melden Erfolg');
+    assert.strictEqual(r.dirty, 0, 'Dirty-Menge leer');
+    assert.strictEqual(r.meta, false, 'Meta nicht mehr vorgemerkt');
+    assert.deepStrictEqual(r.gespeichert, r.speicher, 'gespeichert entspricht dem jüngsten Arbeitsstand (nicht Version 1)');
+    assert.strictEqual(r.gespeichert.ort, 'Version 2');
+    await seite.context().close();
+  }
+
+  /* 3) Schreibfehler: Markierung bleibt, Datei bleibt offen */
+  {
+    const { seite, ids } = await echteSeite(browser, fehler);
+    const a = ids[0];
+    const r = await seite.evaluate(`(async () => {
+      const orig = Speicher.sitzungSetzen.bind(Speicher);
+      Speicher.sitzungSetzen = () => Promise.reject(new Error('Platte voll'));
+      daten.sitzungen[0].ort = 'Nur im Speicher';
+      const ok = await speichern(true);
+      const markiert = dirtySitzungen.has(daten.sitzungen[0].id), fehlerFlag = ui.speicherFehler;
+      await sperren();
+      const offen = sitzungsSchluessel !== null, toasts = fehlerToasts();
+      Speicher.sitzungSetzen = orig;
+      await sperren();
+      return { ok, markiert, fehlerFlag, offen, toasts, zu: sitzungsSchluessel === null, gespeichert: await leseGespeichert() };
+    })()`);
+    assert.strictEqual(r.ok, false, 'Schreibfehler: flush meldet false');
+    assert.ok(r.markiert, 'Dirty-Markierung bleibt erhalten');
+    assert.ok(r.fehlerFlag, 'Fehlerzustand gesetzt');
+    assert.ok(r.offen, 'Schließen scheitert: Schlüssel bleibt, Datei bleibt offen');
+    assert.ok(r.toasts.some(t => /bleibt geöffnet/.test(t)), 'Fehlermeldung beim Schließen: ' + JSON.stringify(r.toasts));
+    assert.ok(r.zu, 'nach behobenem Fehler lässt sich schließen');
+    assert.strictEqual(r.gespeichert[a].ort, 'Nur im Speicher', 'und die Änderung ist dann geschrieben');
+    await seite.context().close();
+  }
+
+  /* 4) Import: Rollback, wenn das Ersetzen scheitert */
+  {
+    const { seite } = await echteSeite(browser, fehler);
+    const r = await seite.evaluate(`(async () => {
+      const alt = daten.sitzungen.map(s => s.id);
+      const neu = () => { const p = leeresProjekt(); p.app = 'br-sitzungsmanager'; p.personen = daten.personen.slice(); p.sitzungen = [neueSitzung(p)]; return p; };
+      const zustand = async () => ({ gespeichert: Object.keys(await leseGespeichert()), speicher: daten.sitzungen.map(s => s.id), toasts: fehlerToasts() });
+      const ergebnis = {};
+
+      /* a) kaputtes Base64 im Anhang */
+      const p1 = neu(); p1.dokumentInhalte = { kaputt: '%%%kein-base64%%%' };
+      await projektUebernehmen(p1);
+      ergebnis.base64 = await zustand();
+
+      /* b) Transaktion bricht mitten im Ersetzen ab (nicht klonbarer Wert nach dem clear()) */
+      const orig = Speicher.allesErsetzen.bind(Speicher);
+      Speicher.allesErsetzen = (m, s, d) => orig(m, s, d.concat([{ id: 'bad', iv: () => 1 }]));
+      document.getElementById('toastContainer').innerHTML = '';
+      await projektUebernehmen(neu());
+      ergebnis.abbruch = await zustand();
+      Speicher.allesErsetzen = orig;
+
+      /* c) Erfolg */
+      document.getElementById('toastContainer').innerHTML = '';
+      const p3 = neu(); p3.dokumentInhalte = { d1: btoa('hallo') };
+      const neuId = p3.sitzungen[0].id;
+      await projektUebernehmen(p3);
+      ergebnis.erfolg = await zustand();
+      ergebnis.erfolg.neuId = neuId;
+      ergebnis.erfolg.dokument = !!(await Speicher.dokumentHolen('d1'));
+      ergebnis.alt = alt;
+      return ergebnis;
+    })()`);
+    for (const k of ['base64', 'abbruch']) {
+      assert.deepStrictEqual(r[k].gespeichert.slice().sort(), r.alt.slice().sort(), k + ': alte Sitzungen liegen weiter im Speicher');
+      assert.deepStrictEqual(r[k].speicher, r.alt, k + ': und im Arbeitsspeicher');
+      assert.ok(r[k].toasts.some(t => /nicht übernommen werden/.test(t)), k + ': Fehlermeldung');
+    }
+    assert.deepStrictEqual(r.erfolg.gespeichert, [r.erfolg.neuId], 'Erfolg: nur die neue Sitzung im Speicher, die alten sind weg');
+    assert.deepStrictEqual(r.erfolg.speicher, [r.erfolg.neuId], 'Erfolg: Arbeitsspeicher ersetzt');
+    assert.ok(r.erfolg.dokument, 'Erfolg: Dokumentinhalt gespeichert');
+    assert.deepStrictEqual(r.erfolg.toasts, [], 'Erfolg: keine Fehlermeldung');
+    await seite.context().close();
+  }
+
+  /* 5) Besetzung nachtragen beim Laden (sitzungFortsetzen → allesLaden) */
+  {
+    const { seite } = await echteSeite(browser, fehler);
+    const r = await seite.evaluate(`(async () => {
+      const mk = window.__mk;
+      const roh = (id, extra) => Object.assign(neueSitzung(daten), { id, status: 'abgeschlossen', datum: '2026-05-05' }, extra);
+      const a = roh('alt-ohne'); delete a.besetzung;
+      const b = roh('alt-aufgehoben', { besetzung: null });
+      await Speicher.storeLeeren('sitzungen');
+      for (const s of [a, b]) { const { iv, ct } = await Krypto.chiffriere(mk.key, s); await Speicher.sitzungSetzen({ id: s.id, iv, ct }); }
+      const vorher = await leseGespeichert();
+      sitzungsSchluessel = null; sitzungsMkBytes = null; sitzungsRolle = null; daten = null;
+      dirtyMeta = false; dirtySitzungen.clear();
+      sessionStorage.setItem(SITZUNG_MERKER, JSON.stringify({ mk: bytesZuBase64(mk.bytes), rolle: 'arbeit' }));
+      const fort = await sitzungFortsetzen();
+      const stand = daten.aenderungsstand;
+      await flushSpeicher();
+      const nachher = await leseGespeichert();
+      return { fort, vorherA: vorher['alt-ohne'].besetzung, nachherA: nachher['alt-ohne'].besetzung,
+               nachherB: nachher['alt-aufgehoben'].besetzung, stand, standNach: daten.aenderungsstand, dirty: dirtySitzungen.size,
+               imSpeicherB: daten.sitzungen.find(s => s.id === 'alt-aufgehoben').besetzung };
+    })()`);
+    assert.ok(r.fort, 'Sitzung wird fortgesetzt');
+    assert.strictEqual(r.vorherA, undefined, 'Ausgangslage: keine Besetzung gespeichert');
+    assert.ok(r.nachherA && r.nachherA.mitglieder && r.nachherA.mitglieder.length === 3, 'Schnappschuss wurde in den Speicher geschrieben');
+    assert.strictEqual(r.nachherB, null, 'bewusst aufgehobene Besetzung (null) wird nicht nachgetragen');
+    assert.strictEqual(r.imSpeicherB, null, 'auch im Arbeitsspeicher nicht');
+    assert.strictEqual(r.stand, 0, 'Laden hebt den Änderungsstand nicht');
+    assert.strictEqual(r.standNach, 0, 'das Nachtragen hebt den Änderungsstand nicht');
+    assert.strictEqual(r.dirty, 0, 'danach nichts vorgemerkt');
+    await seite.context().close();
+  }
+
+  assert.deepStrictEqual(fehler, [], 'keine Laufzeitfehler');
+  await browser.close();
+  console.log('OK  Echte Persistenz: Schließen, gleichzeitiges Schreiben, Schreibfehler, Import-Rollback, Besetzungs-Nachtrag');
+}
+
 (async () => {
   await pruefe('BR-Sitzungsmanager.html', 'sitzung');
   await pruefe('BR-Protokoll.html', 'protokoll');
@@ -2528,5 +2735,6 @@ async function pruefeProtokollInhalt() {
   await pruefeErstinbetriebnahme();
   await pruefeVerlaufUmbrueche();
   await pruefeProtokollInhalt();
+  await pruefeEchtePersistenz();
   console.log('\nAlle Browser-Prüfungen bestanden.');
 })().catch(e => { console.error(e); process.exit(1); });
