@@ -1763,23 +1763,102 @@ async function pruefeAufraeumen() {
   console.log('OK  Aufräum-Werkzeug: Sicherung bereinigen und Browser-Ablage leeren');
 }
 
+/* Testzugang: br-zugang.js gehört nicht ins Repo. Pro Lauf erzeugt der echte Verschlüsselungsgenerator (Playwright bedient die Seite)
+   einen Wegwerf-Zugang mit bekannten Passwörtern. Er wird per addInitScript als window.BR_ZUGANG eingespielt (file:// lässt sich nicht
+   per route umleiten); es wird nichts ins Repo geschrieben. Eine echte scripts/br-zugang.js kann ihn nicht überschreiben (Setter ohne Wirkung). */
+const TEST_PW = { viewer: 'viewertest', arbeit: 'worktest', admin: 'debugtest' };
+let testZugangVersprechen = null;
+function testZugang() {
+  if (!testZugangVersprechen) testZugangVersprechen = (async () => {
+    const browser = await chromium.launch();
+    try {
+      const gen = await browser.newPage();
+      await gen.goto(DATEI('br-verschluesselung-generator.html'));
+      await gen.fill('#viewer', TEST_PW.viewer);
+      await gen.fill('#arbeit', TEST_PW.arbeit);
+      await gen.fill('#admin', TEST_PW.admin);
+      await gen.click('#erzeugen');
+      await gen.waitForSelector('#ergebnis.an', { timeout: 60000 });
+      const zugangJs = await gen.evaluate('zugangInhalt'), stand = await gen.evaluate('standInhalt');
+      assert.ok(zugangJs && stand, 'Generator liefert Zugang und Speicherstand');
+      return { zugangJs, stand, zugang: JSON.parse(stand).zugang };
+    } finally { await browser.close(); }
+  })();
+  return testZugangVersprechen;
+}
+/* Init-Skript: window.BR_ZUGANG = Zugang (ein später geladenes scripts/br-zugang.js kann ihn nicht überschreiben). */
+const zugangInitSkript = zugang => `(() => { const z = ${JSON.stringify(zugang)};
+  Object.defineProperty(window, 'BR_ZUGANG', { get: () => z, set: () => {}, configurable: true }); })()`;
+/* Neuer Kontext, in dem window.BR_ZUGANG der Testzugang ist. */
+async function kontextMitZugang(browser) {
+  const { zugang } = await testZugang();
+  const kontext = await browser.newContext();
+  await kontext.addInitScript(zugangInitSkript(zugang));
+  return kontext;
+}
+/* Wie ein Nutzer: Sperrschirm → „Datei laden" → Datei wählen → Passwort eingeben. `datei` = JSON-Text einer Sicherung. */
+async function anmeldenPerDatei(seite, datei, passwort = TEST_PW.arbeit) {
+  await seite.waitForSelector('#sperrschirm #pwDatei');
+  const [wahl] = await Promise.all([seite.waitForEvent('filechooser'), seite.click('#pwDatei')]);
+  await wahl.setFiles({ name: 'Test.brenc.json', mimeType: 'application/json', buffer: Buffer.from(datei) });
+  await seite.fill('#pwEingabe', passwort);
+  await seite.click('#pwOk');
+  await seite.waitForSelector('#sperrschirm', { state: 'detached', timeout: 15000 });
+}
+/* Sicherung (enc-v2) mit einer Sitzung und dem TOP „Original", unter dem Testzugang verschlüsselt. */
+async function testSicherung(seite) {
+  return seite.evaluate(`(async () => {
+    const auf = await zugangEntsperren(window.BR_ZUGANG, '${TEST_PW.arbeit}');
+    const projekt = leeresProjekt();
+    const s = neueSitzung(projekt); s.datum = '2026-08-12'; s.tops = [neuerTop({ titel: 'Original' })];
+    projekt.sitzungen = [s];
+    const { iv, ct } = await Krypto.chiffriere(auf.mk, projekt);
+    return JSON.stringify({ app: 'br-sitzungsmanager', format: 'enc-v2', zugang: window.BR_ZUGANG,
+                            iv: Array.from(iv), ct: bytesZuBase64(new Uint8Array(ct)) });
+  })()`);
+}
+
+/* OFFEN (bekannter Fehler, Review-Fund 11): Sicherung öffnen → TOP ändern → speichern → „Datei schließen" → dieselbe Sicherung erneut
+   öffnen. Richtig wäre: die jüngere Browser-Änderung bleibt erhalten (oder es wird gefragt). Aktuell ersetzt die Sicherung die Daten
+   stillschweigend. Meldet „OFFEN" statt zu scheitern; wer den App-Fehler behebt, setzt OFFEN_SICHERUNG_UEBERSCHREIBT auf false. */
+const OFFEN_SICHERUNG_UEBERSCHREIBT = true;
+async function pruefeOffenSchliessenUndSicherungNeuOeffnen() {
+  const browser = await chromium.launch();
+  const fehler = [];
+  const seite = await (await kontextMitZugang(browser)).newPage();
+  seite.on('pageerror', e => fehler.push('pageerror: ' + e.message));
+  await seite.goto(DATEI('BR-Sitzungsmanager.html'));
+  await seite.waitForFunction('typeof APP_MODUS !== "undefined"', null, { timeout: 5000 });
+  const sicherung = await testSicherung(seite);
+  await anmeldenPerDatei(seite, sicherung);
+  await seite.evaluate(`(async () => { daten.sitzungen[0].tops[0].titel = 'Neu im Browser'; await speichern(true); await sperren(); })()`);
+  assert.ok(await seite.evaluate('!!document.getElementById("sperrschirm")'), 'Datei geschlossen: Sperrschirm steht');
+  await anmeldenPerDatei(seite, sicherung);
+  const titel = await seite.evaluate('daten.sitzungen[0].tops[0].titel');
+  if (titel === 'Neu im Browser') {
+    assert.ok(!OFFEN_SICHERUNG_UEBERSCHREIBT, 'Fehler ist behoben: OFFEN_SICHERUNG_UEBERSCHREIBT auf false setzen (harte Prüfung)');
+    console.log('OK  Sicherung erneut öffnen behält die jüngere Browser-Änderung');
+  } else if (OFFEN_SICHERUNG_UEBERSCHREIBT) {
+    console.log('OFFEN  Sicherung erneut öffnen: die jüngere Browser-Änderung ging verloren (TOP-Titel "' + titel + '" statt "Neu im Browser")');
+  } else {
+    assert.fail('Sicherung erneut öffnen verliert die jüngere Browser-Änderung (TOP-Titel "' + titel + '")');
+  }
+  await seite.evaluate(`indexedDB.deleteDatabase('br-sitzungsmanager')`);
+  assert.deepStrictEqual(fehler, [], 'keine Laufzeitfehler');
+  await browser.close();
+}
+
 /* Anmeldung: nur „Datei laden", Reload ohne Passwort, „Datei schließen" sperrt wieder.
-   Nutzt die lokalen Wegwerf-Passwoerter aus scripts/br-zugang.js (nicht im Repo auf GitHub). */
+   Nutzt den Testzugang (testZugang()). */
 async function pruefeAnmeldung() {
   const browser = await chromium.launch();
-  const seite = await browser.newPage();
+  const seite = await (await kontextMitZugang(browser)).newPage();
   const fehler = [];
   seite.on('pageerror', e => fehler.push('pageerror: ' + e.message));
   await seite.goto(DATEI('BR-Sitzungsmanager.html'));
   await seite.waitForFunction('typeof APP_MODUS !== "undefined"', null, { timeout: 5000 });
   await seite.waitForSelector('#sperrschirm .sperr-karte');
-
-  /* Ohne die lokale br-zugang.js gibt es kein Passwort zum Anmelden – dann bleibt nur der Sperrschirm zu prüfen. */
-  if (!(await seite.evaluate('!!externerZugang()'))) {
-    await browser.close();
-    console.log('--  Anmeldung: übersprungen (scripts/br-zugang.js fehlt)');
-    return;
-  }
+  assert.ok(await seite.evaluate('!!externerZugang()'), 'der Testzugang ist als window.BR_ZUGANG da');
 
   const schirm = await seite.evaluate(`
     (() => {
@@ -1844,10 +1923,6 @@ async function pruefeAnmeldung() {
 
 /* Erstinbetriebnahme: der Verschluesselungsgenerator liefert einen leeren Speicherstand, den die Module laden koennen. */
 async function pruefeErstinbetriebnahme() {
-  if (!fs.existsSync(path.join(__dirname, 'br-verschluesselung-generator.html'))) {
-    console.log('--  Erstinbetriebnahme: übersprungen (br-verschluesselung-generator.html fehlt)');
-    return;
-  }
   const browser = await chromium.launch();
   const ctx = await browser.newContext();
   const fehler = [];
@@ -1866,15 +1941,13 @@ async function pruefeErstinbetriebnahme() {
   assert.ok(datei.zugang && datei.zugang.arbeit && datei.zugang.viewer, 'und trägt den Zugang mit');
   assert.ok(await gen.evaluate('!!zugangInhalt'), 'br-zugang.js entsteht weiterhin');
 
+  /* Das Protokollmodul läuft mit dem Zugang DIESES Generatorlaufs. */
   const app = await ctx.newPage();
+  await app.addInitScript(zugangInitSkript(datei.zugang));
   app.on('pageerror', e => fehler.push('protokoll: ' + e.message));
   await app.goto(DATEI('BR-Protokoll.html'));
   await app.waitForFunction('typeof APP_MODUS !== "undefined"', null, { timeout: 5000 });
-  if (!(await app.evaluate('!!externerZugang()'))) {
-    await browser.close();
-    console.log('--  Erstinbetriebnahme: übersprungen (scripts/br-zugang.js fehlt)');
-    return;
-  }
+  assert.ok(await app.evaluate('!!externerZugang()'), 'der erzeugte Zugang ist als window.BR_ZUGANG da');
 
   /* Der lokale Zugang bleibt maßgeblich – dasselbe Arbeits-Passwort öffnet beide. */
   const geladen = await app.evaluate(`
@@ -2816,6 +2889,7 @@ async function pruefeEchtePersistenz() {
   await pruefeEinladungsMail();
   await pruefeAnmeldung();
   await pruefeErstinbetriebnahme();
+  await pruefeOffenSchliessenUndSicherungNeuOeffnen();
   await pruefeVerlaufUmbrueche();
   await pruefeProtokollInhalt();
   await pruefeEchtePersistenz();
