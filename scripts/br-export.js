@@ -822,7 +822,7 @@ function oeffneStammdaten() {
         '<button class="btn btn-klein" id="sdPwArbeit">Arbeits-Passwort ändern</button>' +
         '<button class="btn btn-klein" id="sdPwAdmin">Debug-Mode-Passwort ändern</button>') +
       knoepfe('<button class="btn btn-klein btn-primaer" id="sdZugangDownload">Zugangsdatei (br-zugang.js) herunterladen</button>') +
-      '<div style="margin-top:14px"><label class="pruefreihe"><input type="checkbox" id="sdEdgeWarnung"' + (aktuellesZugang && aktuellesZugang.edgeWarnung ? ' checked' : '') + '> ' +
+      '<div style="margin-top:14px"><label class="pruefreihe"><input type="checkbox" id="sdEdgeWarnung"' + (aktuellesZugang && aktuellesZugang.edgeWarnung ? ' checked' : '') + (darfBearbeiten() ? '' : ' disabled') + '> ' +
         'Vor dem Login warnen, wenn Microsoft Edge verwendet wird</label></div>' +
       '<p class="klein-grau">Die Warnung erscheint bei jedem Start unter Edge auf dem Login-Schirm. Sie steht in der Zugangsdatei und gilt erst für alle, ' +
         'wenn diese neu heruntergeladen und in „scripts" gelegt wird.</p>' +
@@ -1483,14 +1483,19 @@ function oeffneStammdaten() {
     zeigeToast('Zugangsdatei erzeugt. Bitte br-zugang.js in den Unterordner „scripts" auf dem Laufwerk legen (bestehende ersetzen).', 'erfolg');
   };
   dlg.querySelector('#sdEdgeWarnung').onchange = async e => {
-    if (e.target.checked) aktuellesZugang.edgeWarnung = true; else delete aktuellesZugang.edgeWarnung;
+    const cb = e.target, an = cb.checked;
+    /* Ein Lese-Tab hält einen womöglich veralteten Zugang (z. B. altes Passwort) – zurückschreiben würde ihn überschreiben. */
+    if (!darfBearbeiten()) { cb.checked = !an; return zeigeToast('In diesem Tab nur lesend – bitte im schreibenden Tab umschalten.', 'fehler'); }
+    const setze = wert => { if (wert) aktuellesZugang.edgeWarnung = true; else delete aktuellesZugang.edgeWarnung; };
+    cb.disabled = true;   /* kein zweites Umschalten, solange gespeichert wird */
+    setze(an);
     try { await Speicher.metaSetzen('zugang', aktuellesZugang); }
     catch (err) {
       /* Zurück auf den gespeicherten Stand, sonst lädt die nächste Zugangsdatei einen nie gespeicherten Wert herunter. */
-      e.target.checked = !e.target.checked;
-      if (e.target.checked) aktuellesZugang.edgeWarnung = true; else delete aktuellesZugang.edgeWarnung;
+      setze(!an); cb.checked = !an; cb.disabled = false;
       zeigeToast('Edge-Warnung konnte nicht gespeichert werden.', 'fehler'); return;
     }
+    cb.disabled = false;
     zeigeToast('Edge-Warnung ' + (e.target.checked ? 'eingeschaltet' : 'ausgeschaltet') + '. Bitte jetzt „Zugangsdatei (br-zugang.js) herunterladen" und die Datei in den Unterordner „scripts" legen, damit es für alle gilt.', 'erfolg');
   };
   dlg.querySelector('#sdReset').onclick = () => bestaetigen('Wirklich alles zurücksetzen?',
