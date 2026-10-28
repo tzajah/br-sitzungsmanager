@@ -312,6 +312,7 @@ function metaEintraege(d) {
     ['protokollVorlagen', d.protokollVorlagen || []],
     ['beschlussVorlagen', d.beschlussVorlagen || []],
     ['urlaub', d.urlaub || []],
+    ['termine', d.termine || []],
     ['beschlussTags', d.beschlussTags || []],
     ['exportOptionen', d.exportOptionen]
   ];
@@ -401,6 +402,7 @@ async function allesLaden() {
   const protokollVorlagen = await metaChiffriertHolen('protokollVorlagen');
   const beschlussVorlagen = await metaChiffriertHolen('beschlussVorlagen');
   const urlaub = await metaChiffriertHolen('urlaub');
+  const termine = await metaChiffriertHolen('termine');
   const beschlussTags = await metaChiffriertHolen('beschlussTags');
   const exportOptionen = await metaChiffriertHolen('exportOptionen');
   const roh = await Speicher.sitzungenAlle();
@@ -416,7 +418,7 @@ async function allesLaden() {
     dokumente: dokumente || undefined, standardTops: standardTops || undefined,
     kategorien: kategorien || undefined,
     protokollVorlagen: protokollVorlagen || undefined, beschlussVorlagen: beschlussVorlagen || undefined,
-    urlaub: urlaub || undefined,
+    urlaub: urlaub || undefined, termine: termine || undefined,
     beschlussTags: beschlussTags || undefined,
     sitzungen: sitzungen, exportOptionen: exportOptionen || undefined
   });
@@ -494,6 +496,7 @@ function migriere(d) {
   else d.beschlussVorlagen = d.beschlussVorlagen.map(t => ({ id: t.id || uid(), titel: t.titel || '', text: t.text || '' }));
   /* Bis v0.28.0 stand der Urlaubskalender nur in der Nachbardatei urlaub.js. */
   d.urlaub = urlaubNormieren(d.urlaub, true);
+  d.termine = terminNormieren(d.termine);   /* Sicherungen vor dem Kalender kennen das Feld nicht */
   d.revision = d.revision || 0;
   d.zuletztGesichert = d.zuletztGesichert || null;
   if (typeof d.aenderungsstand !== 'number') d.aenderungsstand = 0;
@@ -662,7 +665,7 @@ async function projektDateiSpeichern() {
       dokumente: daten.dokumente, dokumentInhalte: await dokumenteFuerBackup(),
       standardTops: daten.standardTops, kategorien: daten.kategorien,
       protokollVorlagen: daten.protokollVorlagen, beschlussVorlagen: daten.beschlussVorlagen,
-      urlaub: daten.urlaub,
+      urlaub: daten.urlaub, termine: daten.termine,
       beschlussTags: daten.beschlussTags,
       sitzungen: daten.sitzungen, exportOptionen: daten.exportOptionen
     };

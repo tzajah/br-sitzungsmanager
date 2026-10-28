@@ -2691,6 +2691,36 @@ async function echteSeite(browser, fehler) {
   return { seite, ids };
 }
 
+/* Termine (Kalender) reisen mit: Ablage, Neuladen, Sicherung, alte Stände ohne das Feld. */
+async function pruefeTerminePersistenz() {
+  const browser = await chromium.launch();
+  const fehler = [];
+  const { seite } = await echteSeite(browser, fehler);
+  const r = await seite.evaluate(`(async () => {
+    daten.termine = [{ id: 't1', titel: 'Kündigung Müller', von: '2026-11-10', vorlauf: 3 }];
+    await speichern(true);
+    const geladen = await allesLaden();                         /* wie nach dem Neuladen */
+    let gesamt = null;
+    sicherungVerpacken = async (mk, zugang, nutzlast) => { gesamt = nutzlast; return {}; };
+    dateiHerunterladen = () => {};
+    textAbfrage = async () => 'Test';
+    await projektDateiSpeichern();
+    daten.termine = [];
+    await projektUebernehmen(JSON.parse(JSON.stringify(gesamt)));
+    return { geladen: geladen.termine.map(t => t.id), gesichert: (gesamt.termine || []).map(t => t.id),
+             zurueck: daten.termine.map(t => t.id), alt: migriere({ sitzungen: [] }).termine,
+             gremium: GREMIUM_FELDER.includes('termine') };
+  })()`);
+  assert.deepStrictEqual(r.geladen, ['t1'], 'Termine überstehen das Laden');
+  assert.deepStrictEqual(r.gesichert, ['t1'], 'Termine stehen in der Sicherung');
+  assert.deepStrictEqual(r.zurueck, ['t1'], 'Termine kommen aus der Sicherung zurück');
+  assert.deepStrictEqual(r.alt, [], 'alter Stand ohne Termine → leere Liste');
+  assert.strictEqual(r.gremium, false, 'termine nicht in GREMIUM_FELDER');
+  assert.deepStrictEqual(fehler, [], 'keine Laufzeitfehler');
+  await browser.close();
+  console.log('OK  Termine: Speichern, Neuladen, Sicherung, alte Stände');
+}
+
 /* Nur ein Tab schreibt (Web Lock je Datenbank); Reload/Ausblenden verliert keine Änderung. */
 async function pruefeEinSchreibenderTab() {
   const browser = await chromium.launch();
@@ -3134,6 +3164,7 @@ async function pruefeEdgeWarnung() {
   await pruefeVerlaufUmbrueche();
   await pruefeProtokollInhalt();
   await pruefeEchtePersistenz();
+  await pruefeTerminePersistenz();
   await pruefeEinSchreibenderTab();
   console.log('\nAlle Browser-Prüfungen bestanden.');
 })().catch(e => { console.error(e); process.exit(1); });

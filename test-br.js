@@ -476,7 +476,7 @@ async function pruefePersistenz() {
   assert.ok(run(`daten.sitzungen[0].id === 's1' && toasts.pop() === 'fehler'`), 'Schreibfehler: alter Stand bleibt');
   run(`fehlerBeim = null;`);
   await run(`projektUebernehmen(${projekt({ d1: 'AAEC' })})`);
-  assert.deepStrictEqual(roh(run('ersetzt')), { m: 11, s: 2, d: 1 }, 'alles in einem Schritt ersetzt');
+  assert.deepStrictEqual(roh(run('ersetzt')), { m: 12, s: 2, d: 1 }, 'alles in einem Schritt ersetzt');
   assert.ok(run(`daten.sitzungen.length === 2 && toasts.pop() === 'erfolg'`), 'danach gilt der neue Stand');
   console.log('OK  Import: erst alles verschlüsseln und schreiben, dann umschalten');
 }
