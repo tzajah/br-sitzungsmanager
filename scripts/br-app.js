@@ -2430,6 +2430,43 @@ function urlaubMeldungenZusammenfuehren(meldungen) {
   return bilanz;
 }
 
+/* Meldungsimport als eigener Ablauf: braucht nur Schreibrecht (Arbeit oder Admin), nicht das Admin-Menü. */
+let urlaubMeldungenDanach = () => {};
+function urlaubMeldungenWaehlen(danach) {
+  if (!darfBearbeiten()) return;
+  urlaubMeldungenDanach = danach || (() => {});
+  document.getElementById('dateiUrlaubMeldung').click();
+}
+
+async function urlaubMeldungenEinlesen(dateien, danach) {
+  if (!darfBearbeiten() || !dateien.length) return;
+  const gelesen = [], abgelehnt = [];
+  for (const f of dateien) {
+    let m;
+    try { m = urlaubMeldungLesen(await f.text()); }
+    catch (err) { m = { fehler: 'Datei nicht lesbar' }; }
+    if (m.fehler) abgelehnt.push(f.name + ': ' + m.fehler); else gelesen.push(m);
+  }
+  if (!gelesen.length) {
+    return zeigeToast('Keine Meldung übernommen. ' + abgelehnt.join(' · '), 'fehler');
+  }
+  const namen = gelesen.map(m => m.name);
+  bestaetigen('Meldungen übernehmen?',
+    'Von ' + namen.length + ' Person(en) werden die gemeldeten Zeiträume übernommen: ' +
+    namen.join(', ') + '. Bisher erfasste Zeiträume dieser Personen werden dabei ersetzt; ' +
+    'alle anderen bleiben unverändert.' +
+    (abgelehnt.length ? ' Nicht gelesen: ' + abgelehnt.join(' · ') + '.' : ''),
+    () => {
+      /* Die Rolle kann sich seit dem Öffnen des Dialogs geändert haben. */
+      if (!darfBearbeiten()) return;
+      const b = urlaubMeldungenZusammenfuehren(gelesen);
+      speichern(); if (danach) danach();
+      zeigeToast(b.neu + ' Zeitraum/Zeiträume von ' + b.personen.length + ' Person(en) übernommen' +
+        (b.ersetzt ? ' (' + b.ersetzt + ' ersetzt)' : '') +
+        (b.ohne.length ? ' · ohne Abwesenheit gemeldet: ' + b.ohne.join(', ') : '') + '.', 'erfolg');
+    }, 'Übernehmen');
+}
+
 /* Übernimmt window.BR_KATEGORIEN (category.js), falls vorhanden und abweichend. */
 function externeKategorienUebernehmen() {
   const ext = window.BR_KATEGORIEN;

@@ -1276,35 +1276,7 @@ function oeffneStammdaten() {
         zeigeToast(weg + ' vergangene(r) Eintrag/Einträge entfernt.', 'erfolg');
       }, 'Entfernen', true);
   };
-  dlg.querySelector('#sdUrlaubMeldungen').onclick = () => document.getElementById('dateiUrlaubMeldung').click();
-
-  document.getElementById('dateiUrlaubMeldung').onchange = async e => {
-    const dateien = Array.from(e.target.files || []); e.target.value = '';
-    if (!dateien.length) return;
-    const gelesen = [], abgelehnt = [];
-    for (const f of dateien) {
-      let m;
-      try { m = urlaubMeldungLesen(await f.text()); }
-      catch (err) { m = { fehler: 'Datei nicht lesbar' }; }
-      if (m.fehler) abgelehnt.push(f.name + ': ' + m.fehler); else gelesen.push(m);
-    }
-    if (!gelesen.length) {
-      return zeigeToast('Keine Meldung übernommen. ' + abgelehnt.join(' · '), 'fehler');
-    }
-    const namen = gelesen.map(m => m.name);
-    bestaetigen('Meldungen übernehmen?',
-      'Von ' + namen.length + ' Person(en) werden die gemeldeten Zeiträume übernommen: ' +
-      namen.join(', ') + '. Bisher erfasste Zeiträume dieser Personen werden dabei ersetzt; ' +
-      'alle anderen bleiben unverändert.' +
-      (abgelehnt.length ? ' Nicht gelesen: ' + abgelehnt.join(' · ') + '.' : ''),
-      () => {
-        const b = urlaubMeldungenZusammenfuehren(gelesen);
-        speichern(); renderUrlaub();
-        zeigeToast(b.neu + ' Zeitraum/Zeiträume von ' + b.personen.length + ' Person(en) übernommen' +
-          (b.ersetzt ? ' (' + b.ersetzt + ' ersetzt)' : '') +
-          (b.ohne.length ? ' · ohne Abwesenheit gemeldet: ' + b.ohne.join(', ') : '') + '.', 'erfolg');
-      }, 'Übernehmen');
-  };
+  dlg.querySelector('#sdUrlaubMeldungen').onclick = () => urlaubMeldungenWaehlen(renderUrlaub);
 
   const tagc = dlg.querySelector('#sdTags');
   const renderTags = () => {
@@ -1532,6 +1504,10 @@ function verkabeln() {
   imp.title = UEBERGABE_TEXT[uebergabeNimmt()].was + ' aus einer Übergabedatei der Gegenstelle einlesen';
   exp.onclick = () => uebergabeDateiSpeichern(aktSitzung());
   imp.onclick = () => document.getElementById('dateiSitzung').click();
+  document.getElementById('dateiUrlaubMeldung').onchange = e => {
+    const dateien = Array.from(e.target.files || []); e.target.value = '';
+    urlaubMeldungenEinlesen(dateien, urlaubMeldungenDanach);
+  };
   document.getElementById('dateiSitzung').onchange = e => {
     const f = e.target.files[0]; e.target.value = '';
     if (f) uebergabeDateiOeffnen(f);

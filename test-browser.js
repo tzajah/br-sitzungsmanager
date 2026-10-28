@@ -1211,6 +1211,31 @@ async function pruefeUrlaubMeldung() {
   assert.ok(abgelehnt[1].includes('Urlaubsmeldung'));
   assert.ok(abgelehnt[2].includes('Namen'));
 
+  /* Import als eigener Ablauf: Schreibrecht „Arbeit" genügt, Viewer und späterer Rollenwechsel sperren. */
+  const importLauf = async (rolle, rolleVorKlick) => {
+    await sm.evaluate(`
+      (() => {
+        daten.urlaub = [{ id: 'x', name: 'Erika Mustermann', von: '2026-01-01', bis: '2026-01-05', grund: 'Alt' }];
+        sitzungsRolle = ${JSON.stringify(rolle)};
+        window.__danach = 0;
+        window.__lauf = urlaubMeldungenEinlesen([new File([${JSON.stringify(gemeldet.text)}], 'a.json')], () => { window.__danach++; });
+      })()
+    `);
+    await sm.waitForTimeout(150);
+    if (rolleVorKlick) await sm.evaluate(`sitzungsRolle = ${JSON.stringify(rolleVorKlick)}`);
+    if (await sm.locator('#bstOk').isVisible()) await sm.click('#bstOk');
+    await sm.evaluate('window.__lauf');
+    return sm.evaluate(`({ grund: daten.urlaub.map(e => e.grund).join(','), danach: window.__danach })`);
+  };
+  const impArbeit = await importLauf('arbeit');
+  assert.strictEqual(impArbeit.grund, 'Urlaub,Kur', 'Rolle Arbeit darf Meldungen übernehmen');
+  assert.strictEqual(impArbeit.danach, 1, 'danach() läuft nach der Übernahme');
+  const impViewer = await importLauf('viewer');
+  assert.strictEqual(impViewer.grund, 'Alt', 'Viewer ändert nichts');
+  const impWechsel = await importLauf('arbeit', 'viewer');
+  assert.strictEqual(impWechsel.grund, 'Alt', 'Rollenwechsel vor dem Bestätigen sperrt die Übernahme');
+  await sm.evaluate(`sitzungsRolle = 'arbeit'; document.getElementById('dlgBestaetigen').open && document.getElementById('dlgBestaetigen').close()`);
+
   const daten0Nr = await sm.evaluate('daten.sitzungen[0].nr');
   const kal = await sm.evaluate(`
     (() => {
