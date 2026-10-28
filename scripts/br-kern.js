@@ -554,6 +554,7 @@ function urlaubKalender(daten, monat, heute) {
   const start = new Date(jahr, mon, 1 - versatz);
 
   const eintraege = urlaubNormieren(daten && daten.urlaub);
+  const termine = terminNormieren(daten && daten.termine);
   const sitzungen = ((daten && daten.sitzungen) || []).filter(s => s.datum && !s.archiviert);
 
   const wochen = [];
@@ -569,6 +570,7 @@ function urlaubKalender(daten, monat, heute) {
         wochenende: i >= 5,
         heute: iso === heute,
         abwesend: eintraege.filter(e => e.von <= iso && iso <= e.bis),
+        termine: termine.filter(t => t.von <= iso && iso <= t.bis),
         sitzungen: sitzungen.filter(s => s.datum.slice(0, 10) === iso)
       });
       cursor.setDate(cursor.getDate() + 1);
@@ -589,6 +591,62 @@ function monatVerschieben(monat, n) {
   if (!m) return monat;
   const d = new Date(parseInt(m[1], 10), parseInt(m[2], 10) - 1 + n, 1);
   return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+}
+
+/* Termine des gemeinsamen Kalenders; Erinnerung läuft von (von − vorlauf) bis einschließlich bis. */
+const TERMIN_VORLAUF = [
+  { tage: null, label: 'keine Erinnerung' },
+  { tage: 0, label: 'am selben Tag' },
+  { tage: 1, label: '1 Tag vorher' },
+  { tage: 3, label: '3 Tage vorher' },
+  { tage: 7, label: '1 Woche vorher' },
+  { tage: 14, label: '2 Wochen vorher' }
+];
+
+function isoPlusTage(iso, n) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  return isoTag(new Date(+m[1], +m[2] - 1, +m[3] + n));
+}
+
+/* Einzige Normalisierungsstelle für Termine; kaputte Einträge fallen weg, unbekannter Vorlauf wird 7. */
+function terminNormieren(liste) {
+  if (!Array.isArray(liste)) return [];
+  const datum = /^\d{4}-\d{2}-\d{2}$/;
+  return liste
+    .filter(e => e && e.titel && e.von)
+    .map(e => ({
+      id: e.id || uid(),
+      titel: String(e.titel).trim(),
+      von: String(e.von).slice(0, 10),
+      bis: String(e.bis || e.von).slice(0, 10),
+      uhrzeit: /^([01]\d|2[0-3]):[0-5]\d$/.test(e.uhrzeit) ? e.uhrzeit : '',
+      notiz: String(e.notiz || ''),
+      vorlauf: TERMIN_VORLAUF.some(v => v.tage === e.vorlauf) ? e.vorlauf : 7,
+      geaendertAm: e.geaendertAm || ''
+    }))
+    .filter(t => t.titel && datum.test(t.von) && datum.test(t.bis) && t.bis >= t.von)
+    .sort((a, b) => a.von < b.von ? -1 : a.von > b.von ? 1
+      : a.uhrzeit < b.uhrzeit ? -1 : a.uhrzeit > b.uhrzeit ? 1 : a.titel.localeCompare(b.titel, 'de'));
+}
+
+function terminErinnerungAb(t) {
+  return t.vorlauf === null ? null : isoPlusTage(t.von, -t.vorlauf);
+}
+
+function terminGelesenSchluessel(t) {
+  return t.id + '|' + t.von + '|' + t.vorlauf;
+}
+
+/* termine müssen normiert (sortiert) sein; heute ist ein ISO-Datum, gelesen ein Set von Schlüsseln. */
+function erinnerungen(termine, heute, gelesen) {
+  const faellig = [], demnaechst = [];
+  const grenze = isoPlusTage(heute, 30);
+  for (const t of termine) {
+    const ab = terminErinnerungAb(t);
+    if (ab !== null && ab <= heute && heute <= t.bis) faellig.push({ termin: t, gelesen: gelesen.has(terminGelesenSchluessel(t)) });
+    else if (t.von > heute && t.von <= grenze) demnaechst.push(t);
+  }
+  return { faellig: faellig, demnaechst: demnaechst };
 }
 
 function urlaubUnbekannteNamen(daten) {
@@ -624,6 +682,7 @@ function leeresProjekt() {
     protokollVorlagen: protokollVorlagenDefault(),
     beschlussVorlagen: beschlussVorlagenDefault(),
     urlaub: [],
+    termine: [],
     beschlussTags: [],
     sitzungen: [],
     exportOptionen: {

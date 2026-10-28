@@ -371,6 +371,43 @@ console.log('OK  Erscheinungsbild: Akzentfarbe mit abgeleiteten Varianten, Kontr
 }
 console.log('OK  PDF-Tabelle: überhohe Zeile läuft auf Folgeseiten weiter');
 
+/* Termine (Kern): Normalisierung, Fälligkeit, Gelesen-Schlüssel, Kalendertage */
+{
+const k = kernLaden(undefined, []);
+const n = roh(k.terminNormieren([
+  { id: 'a', titel: ' Kündigung Müller ', von: '2026-11-10', vorlauf: 3 },
+  { id: 'b', titel: '', von: '2026-11-10' },
+  { id: 'c', titel: 'Verdreht', von: '2026-11-10', bis: '2026-11-01' },
+  { id: 'd', titel: 'Schulung', von: '2026-11-02', bis: '2026-11-06', uhrzeit: '25:99', vorlauf: 5 },
+  { id: 'e', titel: 'Ohne', von: '2026-11-03', vorlauf: null }
+]));
+assert.deepStrictEqual(n.map(t => t.id), ['d', 'e', 'a']);
+assert.strictEqual(n[2].titel, 'Kündigung Müller');
+assert.strictEqual(n[2].bis, '2026-11-10');
+assert.strictEqual(n[0].uhrzeit, '');
+assert.strictEqual(n[0].vorlauf, 7);
+assert.strictEqual(n[1].vorlauf, null);
+const [schulung, ohne, kuendigung] = n;
+assert.strictEqual(k.terminErinnerungAb(kuendigung), '2026-11-07');
+assert.strictEqual(k.terminErinnerungAb(ohne), null);
+assert.strictEqual(k.isoPlusTage('2026-03-01', -1), '2026-02-28');
+const e1 = roh(k.erinnerungen(n, '2026-11-06', new Set()));
+assert.deepStrictEqual(e1.faellig.map(f => f.termin.id), ['d']);          // mehrtägig, letzter Tag
+assert.deepStrictEqual(e1.demnaechst.map(t => t.id), ['a']);              // noch nicht fällig, < 30 Tage
+const e2 = roh(k.erinnerungen(n, '2026-11-07', new Set([k.terminGelesenSchluessel(kuendigung)])));
+assert.deepStrictEqual(e2.faellig.map(f => [f.termin.id, f.gelesen]), [['a', true]]);
+const e3 = roh(k.erinnerungen(n, '2026-11-11', new Set()));
+assert.deepStrictEqual(e3.faellig, []);                                    // nach bis verschwunden
+const heuteAngelegt = roh(k.terminNormieren([{ id: 'x', titel: 'Frist', von: '2026-11-20', vorlauf: 14 }]));
+assert.strictEqual(roh(k.erinnerungen(heuteAngelegt, '2026-11-20', new Set())).faellig.length, 1);
+assert.strictEqual(k.terminGelesenSchluessel(kuendigung), 'a|2026-11-10|3');
+const kal = roh(k.urlaubKalender({ urlaub: [], sitzungen: [], termine: n }, '2026-11', '2026-11-01'));
+const tag4 = kal.wochen.flat().find(t => t.iso === '2026-11-04');
+assert.deepStrictEqual(tag4.termine.map(t => t.id), ['d']);
+assert.deepStrictEqual(roh(k.leeresProjekt().termine), []);
+console.log('OK  Termine: Normalisierung, Fälligkeit, Gelesen-Schlüssel, Kalendertage');
+}
+
 /* Persistenz (br-app.js): Schreibreihenfolge, Schließen erst nach dem Speichern, Import atomar. IndexedDB ist durch einen Speicher-Stub ersetzt. */
 async function pruefePersistenz() {
   const ctx = vm.createContext({
