@@ -2398,18 +2398,6 @@ function externeBeschlussVorlagenUebernehmen() {
   return true;
 }
 
-/* Übernimmt window.BR_URLAUB (urlaub.js): die Datei ist maßgeblich und überschreibt den in der App bearbeiteten Stand. */
-function externeUrlaubUebernehmen() {
-  const ext = window.BR_URLAUB;
-  if (!Array.isArray(ext) || !ext.length) return false;
-  const norm = urlaubNormieren(ext);
-  if (!norm.length) return false;
-  const sig = arr => (arr || []).map(e => e.name + '␟' + e.von + '␟' + e.bis + '␟' + e.grund).join('\n');
-  if (sig(norm) === sig(urlaubNormieren(daten.urlaub))) return false;   /* bereits aktuell */
-  daten.urlaub = norm.map(e => Object.assign({ id: uid() }, e));
-  return true;
-}
-
 /* Urlaubsmeldungen (br-urlaub-melden.html, Format 'urlaub-v1'): eine Meldung ersetzt nur die Zeiträume ihrer Person. Bewusst ohne Passwort – daher läuft alles durch urlaubNormieren(). */
 function urlaubMeldungLesen(text) {
   let d;
@@ -2542,7 +2530,7 @@ function sitzungDuplizieren(quelle) {
 
 /* Reiter „Sitzung" */
 
-/* Wer ist laut urlaub.js abwesend – nur Personen aus den Stammdaten; Namen ohne Zuordnung meldet das Admin-Menü. */
+/* Wer ist laut Urlaubskalender abwesend – nur Personen aus den Stammdaten; Namen ohne Zuordnung meldet das Admin-Menü. */
 function urlaubHinweisHtml(datum) {
   const d = String(datum || '').slice(0, 10);
   if (!d) return '';
@@ -2553,7 +2541,7 @@ function urlaubHinweisHtml(datum) {
   if (!betroffen.length) return '';
   const mitglieder = betroffen.filter(x => (x.p.gruppe || 'br') === 'br');
   return '<div class="hinweis warnung"><b>Urlaubskalender:</b> Am ' + esc(fmtDatum(d, true)) + ' ' +
-    (betroffen.length === 1 ? 'ist' : 'sind') + ' laut <code>urlaub.js</code> abwesend: ' +
+    (betroffen.length === 1 ? 'ist' : 'sind') + ' laut Urlaubskalender abwesend: ' +
     betroffen.map(x => esc(x.p.name) + ' <span class="klein-grau">(' + esc(x.u.grund) + ' bis ' + esc(fmtDatum(x.u.bis)) + ')</span>').join(', ') + '.' +
     (mitglieder.length
       ? ' Davon ' + mitglieder.length + ' Betriebsratsmitglied(er) – bitte rechtzeitig Ersatzmitglieder laden. Im Protokoll werden sie als „Entschuldigt" vorbelegt.'
@@ -2568,7 +2556,7 @@ function anwesenheitTabelle(el, s, beiAenderung) {
     el.innerHTML = '<div class="hinweis warnung">Es sind noch keine Mitglieder erfasst. Bitte zuerst im <b>Admin-Menü</b> (links unten, Reiter „Personen") die Mitgliederliste anlegen – daraus entstehen Anwesenheitsliste und Teilnahmeübersicht.</div>';
     return mitglieder;
   }
-  /* Wer laut urlaub.js abwesend ist und noch keinen Status hat, wird einmalig als „Entschuldigt" vorbelegt; erfasste Angaben bleiben unangetastet. */
+  /* Wer laut Urlaubskalender abwesend ist und noch keinen Status hat, wird einmalig als „Entschuldigt" vorbelegt; erfasste Angaben bleiben unangetastet. */
   const urlaubJe = {};
   let vorbelegt = 0;
   for (const m of mitglieder) {

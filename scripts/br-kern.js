@@ -501,7 +501,7 @@ function beschlussVorlagenDefault() {
   ].map(t => ({ id: uid(), titel: t.titel, text: t.text }));
 }
 
-/* Externe urlaub.js (window.BR_URLAUB) hat beim Öffnen Vorrang. Datumsangaben sind ISO, beide Grenzen einschließlich. */
+/* Datumsangaben sind ISO, beide Grenzen einschließlich. */
 function urlaubNameSchluessel(name) {
   return String(name == null ? '' : name).trim().replace(/\s+/g, ' ').toLowerCase();
 }

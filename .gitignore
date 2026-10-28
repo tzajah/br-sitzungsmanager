@@ -5,8 +5,8 @@
 # auf das geschützte BR-Laufwerk, nie in die Versionsverwaltung
 br-zugang.js
 
-# Personenbezogene Daten. urlaub.beispiel.js ist die Vorlage und wird versioniert;
-# die gefüllte urlaub.js bleibt lokal.
+# Personenbezogene Daten. Eine alte, gefüllte urlaub.js (entfällt seit der
+# Speicherdatei-Lösung) bleibt weiter unversioniert.
 urlaub.js
 
 # Gremium: Stammdaten und Personen, verschlüsselt – gehört auf das BR-Laufwerk

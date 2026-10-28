@@ -27,7 +27,7 @@ async function pruefe(datei, erwarteterModus) {
   const seite = await browser.newPage();
   /* Nachbardateien, die fehlen dürfen – alles andere ist ein echter Ladefehler.
      br-zugang.js liegt nur auf dem geschützten Laufwerk; ohne sie steht der Sperrschirm „gesperrt". */
-  const OPTIONAL = ['Gremium', 'urlaub.js', 'br-zugang.js'];
+  const OPTIONAL = ['Gremium', 'br-zugang.js'];
   const fehler = [];
   let fehlendOptional = 0;
   seite.on('pageerror', e => fehler.push('pageerror: ' + e.message));
@@ -50,7 +50,9 @@ async function pruefe(datei, erwarteterModus) {
   assert.ok(await seite.evaluate('!!document.querySelector(".sperrschirm")'), datei + ': Sperrschirm steht');
   assert.ok(await seite.evaluate('typeof erzeugeProtokollPdf === "function" && typeof renderTabTagesordnung === "function"'),
     datei + ': Funktionen aus allen fünf Modulen sind im gemeinsamen Scope');
-  /* urlaub.js ist laut README optional und darf window.BR_URLAUB offen lassen. */
+  /* urlaub.js entfällt: Urlaube leben nur noch in der Speicherdatei. */
+  assert.strictEqual(await seite.evaluate('typeof externeUrlaubUebernehmen'), 'undefined', datei + ': keine urlaub.js-Übernahme mehr');
+  assert.strictEqual(await seite.locator('script[src*="urlaub.js"]').count(), 0, datei + ': kein urlaub.js-Script-Tag');
   assert.ok(await seite.evaluate('Array.isArray(window.BR_BESCHLUSS_VORLAGEN)'),
     datei + ': beschluss_vorlagen.js geladen');
 
@@ -919,56 +921,8 @@ async function pruefeUrlaubEditor() {
   assert.deepStrictEqual(aufgeraeumt.nachAufraeumen, ['neu'], 'nur vollständig vergangene Zeiträume fallen weg');
   assert.strictEqual(aufgeraeumt.nachLoeschen, 0, 'einzelne Einträge lassen sich löschen');
 
-  const datei = await seite.evaluate(`
-    (async () => {
-      const dlg = document.getElementById('dlgStammdaten');
-      daten.urlaub = [
-        { id: 'b', name: 'Zweiter', von: '2026-09-01', bis: '2026-09-05', grund: 'Kur' },
-        { id: 'a', name: 'Erster', von: '2026-08-01', bis: '2026-08-05', grund: 'Urlaub' },
-        { id: 'c', name: '', von: '', bis: '', grund: '' }
-      ];
-      oeffneStammdaten();
-      let ab = null;
-      const echt = dateiHerunterladen;
-      dateiHerunterladen = (blob, name) => { ab = { name: name, blob: blob }; };
-      dlg.querySelector('#sdUrlaubDownload').click();
-      dateiHerunterladen = echt;
-      const text = await ab.blob.text();
-      /* Wie der <script src="urlaub.js">-Tag: ausführen und wieder übernehmen. */
-      daten.urlaub = [];
-      (0, eval)(text);
-      const uebernommen = externeUrlaubUebernehmen();
-      const nochmal = externeUrlaubUebernehmen();
-      window.BR_URLAUB = undefined;
-      return { name: ab.name, text: text, uebernommen: uebernommen, nochmal: nochmal,
-               zurueck: daten.urlaub.map(e => e.name + '|' + e.von + '|' + e.grund) };
-    })()
-  `);
-  assert.strictEqual(datei.name, 'urlaub.js');
-  assert.ok(datei.text.includes('window.BR_URLAUB'), 'setzt window.BR_URLAUB');
-  assert.ok(datei.text.includes('personenbezogene Daten'), 'mit Datenschutzhinweis im Kopf');
-  assert.strictEqual(datei.uebernommen, true, 'die erzeugte Datei lässt sich zurücklesen');
-  assert.strictEqual(datei.nochmal, false, 'unverändert → kein zweites Übernehmen');
-  assert.deepStrictEqual(datei.zurueck,
-    ['Erster|2026-08-01|Urlaub', 'Zweiter|2026-09-01|Kur'],
-    'nach Beginn sortiert, der unbrauchbare Eintrag fehlt');
-
-  const vorrang = await seite.evaluate(`
-    (() => {
-      daten.urlaub = [{ id: 'app', name: 'Aus der App', von: '2026-01-01', bis: '2026-01-02', grund: 'Urlaub' }];
-      window.BR_URLAUB = [{ name: 'Aus der Datei', von: '2026-02-01', bis: '2026-02-02' }];
-      const geaendert = externeUrlaubUebernehmen();
-      const namen = daten.urlaub.map(e => e.name);
-      window.BR_URLAUB = [];
-      const beiLeer = externeUrlaubUebernehmen();
-      window.BR_URLAUB = undefined;
-      return { geaendert: geaendert, namen: namen, beiLeer: beiLeer, ids: daten.urlaub.every(e => !!e.id) };
-    })()
-  `);
-  assert.strictEqual(vorrang.geaendert, true);
-  assert.deepStrictEqual(vorrang.namen, ['Aus der Datei'], 'die Datei ist maßgeblich');
-  assert.strictEqual(vorrang.beiLeer, false, 'eine leere Datei überschreibt nichts');
-  assert.ok(vorrang.ids, 'übernommene Einträge bekommen IDs');
+  assert.strictEqual(await seite.evaluate(`(oeffneStammdaten(), !!document.getElementById('sdUrlaubDownload') || !!document.getElementById('dateiUrlaub'))`), false,
+    'kein Abgleich mit urlaub.js mehr im Admin-Menü');
 
   assert.ok(await seite.evaluate(`GREMIUM_FELDER.includes('urlaub')`),
     'urlaub gehört zu den Stammdaten und wandert zum Protokollmodul');
@@ -978,7 +932,7 @@ async function pruefeUrlaubEditor() {
   await seite.evaluate(`document.getElementById('dlgStammdaten').close()`);
   assert.deepStrictEqual(fehler, [], 'keine Laufzeitfehler');
   await browser.close();
-  console.log('OK  Urlaubskalender im Admin-Menü: erfassen, aufräumen, als urlaub.js ausgeben');
+  console.log('OK  Urlaubskalender im Admin-Menü: erfassen, aufräumen');
 }
 
 /* Anwesenheitsliste: Ausfüllfelder vollständig, aber keine Leerzeilen für nicht geladene Personen */

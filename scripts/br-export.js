@@ -809,8 +809,7 @@ function oeffneStammdaten() {
       knoepfe(
         '<button class="btn btn-klein btn-primaer" id="sdUrlaubNeu">+ Abwesenheit</button>' +
         '<button class="btn btn-klein" id="sdUrlaubMeldungen">Meldungen einlesen …</button>' +
-        '<button class="btn btn-klein btn-geist" id="sdUrlaubAufraeumen" title="Alle Zeiträume entfernen, die vollständig in der Vergangenheit liegen">Vergangene aufräumen</button>') +
-      dateiAbgleichHtml('urlaub.js', 'sdUrlaubDownload', 'sdUrlaubLaden')) +
+        '<button class="btn btn-klein btn-geist" id="sdUrlaubAufraeumen" title="Alle Zeiträume entfernen, die vollständig in der Vergangenheit liegen">Vergangene aufräumen</button>')) +
 
     adminReiterHtml('zugang',
       '<h3 class="dlg-sektion">Zugang &amp; Passwörter</h3>' +
@@ -1277,17 +1276,6 @@ function oeffneStammdaten() {
         zeigeToast(weg + ' vergangene(r) Eintrag/Einträge entfernt.', 'erfolg');
       }, 'Entfernen', true);
   };
-  dlg.querySelector('#sdUrlaubDownload').onclick = () => {
-    const rein = urlaubNormieren(daten.urlaub).map(e => ({ name: e.name, von: e.von, bis: e.bis, grund: e.grund }));
-    const inhalt = '/* Urlaubs- und Abwesenheitskalender für den BR-Manager.\n' +
-      '   Diese Datei in den Unterordner "scripts" legen; sie wird beim Öffnen automatisch\n' +
-      '   geladen und hat dann Vorrang vor der in der App gepflegten Liste.\n' +
-      '   Datenschutz: enthält personenbezogene Daten – nur auf das geschützte BR-Laufwerk. */\n' +
-      'window.BR_URLAUB = ' + JSON.stringify(rein, null, 2) + ';\n';
-    dateiHerunterladen(new Blob([inhalt], { type: 'text/javascript;charset=utf-8' }), 'urlaub.js');
-    zeigeToast('urlaub.js erstellt (' + rein.length + ' Eintrag/Einträge).', 'erfolg');
-  };
-  dlg.querySelector('#sdUrlaubLaden').onclick = () => document.getElementById('dateiUrlaub').click();
   dlg.querySelector('#sdUrlaubMeldungen').onclick = () => document.getElementById('dateiUrlaubMeldung').click();
 
   document.getElementById('dateiUrlaubMeldung').onchange = async e => {
@@ -1316,24 +1304,6 @@ function oeffneStammdaten() {
           (b.ersetzt ? ' (' + b.ersetzt + ' ersetzt)' : '') +
           (b.ohne.length ? ' · ohne Abwesenheit gemeldet: ' + b.ohne.join(', ') : '') + '.', 'erfolg');
       }, 'Übernehmen');
-  };
-
-  document.getElementById('dateiUrlaub').onchange = e => {
-    const f = e.target.files[0]; e.target.value = '';
-    if (!f) return;
-    const r = new FileReader();
-    r.onload = () => {
-      try {
-        const txt = String(r.result);
-        const t2 = externesArrayText(txt), a = t2.indexOf('['), b = t2.lastIndexOf(']');
-        if (a < 0 || b < a) throw new Error('kein Array');
-        const norm = urlaubNormieren(JSON.parse(t2.slice(a, b + 1)), true);
-        if (!norm.length) throw new Error('leer');
-        daten.urlaub = norm; speichern(); renderUrlaub();
-        zeigeToast(norm.length + ' Abwesenheit(en) aus Datei übernommen.', 'erfolg');
-      } catch (err) { zeigeToast('Die Datei konnte nicht gelesen werden (erwartet: urlaub.js).', 'fehler'); }
-    };
-    r.readAsText(f);
   };
 
   const tagc = dlg.querySelector('#sdTags');
@@ -1620,7 +1590,6 @@ async function appStarten() {
   let externUebernommen = externeStandardTopsUebernehmen();
   if (externeVorlagenUebernehmen()) externUebernommen = true;
   if (externeBeschlussVorlagenUebernehmen()) externUebernommen = true;
-  if (externeUrlaubUebernehmen()) externUebernommen = true;
   if (await externesGremiumUebernehmen()) externUebernommen = true;
   if (!gremiumGeladen && externeKategorienUebernehmen()) externUebernommen = true;
   kategorienAnwenden();
@@ -1639,7 +1608,7 @@ async function appStarten() {
     tagesordnungUebernehmen, ergebnisseUebernehmen,
     gremiumDateiErzeugen, externesGremiumUebernehmen, gremiumSignatur, GREMIUM_FELDER,
     urlaubEintraege, abwesendAm, abwesenheitVon, urlaubUnbekannteNamen, urlaubHinweisHtml,
-    urlaubNormieren, externeUrlaubUebernehmen,
+    urlaubNormieren,
     darfBearbeiten, istAdmin,
     ui, renderAlles, sitzungAnlegen, leeresProjekt, speichern,
     projektDateiSpeichern, projektDateiOeffnen, projektBeitreten, sperren,
