@@ -131,16 +131,35 @@ Sicherung → Öffnen.
   (Kalender und Admin-Reiter) nutzen und danach die jeweils offene Ansicht neu zeichnet.
 - `darfBearbeiten()` wird **unmittelbar vor der Übernahme** geprüft, nicht erst beim Speichern,
   weil die Zusammenführung `daten.urlaub` sofort verändert.
-- Der Admin-Reiter „Urlaub" bleibt für die manuelle Pflege und den `urlaub.js`-Abgleich und
-  behält „Meldungen einlesen …" (gemeinsamer Ablauf).
-- **`urlaub.js` wirksam:** Die zentrale Datei hat beim Öffnen nur dann Vorrang, wenn
-  `window.BR_URLAUB` ein Array mit mindestens einem gültigen (normalisierten) Eintrag ist
-  (br-app.js um Z. 2399–2406). Genau dann würden eingelesene Meldungen beim nächsten Start
-  überschrieben, und der Import ist **an beiden Einstiegen** gesperrt, mit Hinweis, dass der
-  Kalender zentral über `urlaub.js` gepflegt wird. Eine Hilfsfunktion entscheidet das für beide.
-  *(Meine Entscheidung.)*
+- Der Admin-Reiter „Urlaub" bleibt für die manuelle Pflege und behält „Meldungen einlesen …"
+  (gemeinsamer Ablauf).
 
-- `urlaub.js` betrifft nur `daten.urlaub`. Termine bleiben davon unberührt.
+### `urlaub.js` entfällt (Entscheidung des Users)
+
+Urlaube liegen künftig **nur noch in der Speicherdatei** (`daten.urlaub`), nicht mehr zusätzlich in
+einer Nachbardatei. Damit gibt es eine einzige Quelle, und eingelesene Meldungen können nicht mehr
+beim nächsten Start überschrieben werden.
+
+Entfernt wird:
+- `<script src="scripts/urlaub.js">` in `BR-Sitzungsmanager.html` und `BR-Protokoll.html`.
+- Die Übernahme von `window.BR_URLAUB` beim Öffnen (br-app.js um Z. 2398–2406) samt Aufruf.
+- Im Admin-Reiter „Urlaub" der Dateiabgleich „urlaub.js herunterladen / laden"
+  (br-export.js um Z. 813, 1280–1290, 1334) und das zugehörige Datei-Eingabefeld.
+- `scripts/urlaub.beispiel.js`.
+- Die zugehörigen Tests in `test-browser.js` (u. a. Z. 30, 53, 930–981); `urlaub.js` fliegt aus
+  der Liste optionaler Dateien.
+- Erwähnungen in README (Dateiliste, Netzlaufwerk-Abschnitt, Tabelle) und Kommentaren
+  (br-kern.js Z. 504, br-app.js Z. 2542/2553/2568: dort „laut Urlaubskalender" statt
+  „laut `urlaub.js`", auch im sichtbaren Warntext).
+
+Bleibt: Das Protokollmodul bekommt die Urlaube wie bisher über die Datei `Gremium` (dort ist der
+Urlaubskalender schon enthalten). Die Migration in `migriere()` bleibt unverändert.
+
+**Umstellung:** Wer bisher `urlaub.js` nutzt, hat deren Inhalt bereits beim letzten Öffnen in den
+Browser-Bestand übernommen; mit der nächsten Sicherung steht er in der Speicherdatei. Der
+CHANGELOG-Eintrag sagt dazu: vor dem Austausch der App einmal mit der alten Version öffnen und
+sichern, danach `scripts/urlaub.js` löschen (sie wird nicht mehr gelesen und enthält
+personenbezogene Daten). *(Meine Entscheidung; keine automatische Einmal-Übernahme.)*
 
 ### Was gleich bleibt
 
