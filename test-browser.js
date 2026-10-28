@@ -1318,7 +1318,7 @@ async function pruefeUrlaubMeldung() {
   assert.ok(ansicht.abwesend > 0, 'die laufende Abwesenheit steht im Kalender');
   assert.ok(ansicht.zellen === 35 || ansicht.zellen === 42, 'fünf oder sechs volle Wochen');
   assert.strictEqual(ansicht.sitzungsmarken, 1, 'der Sitzungstermin ist markiert');
-  assert.strictEqual(ansicht.legende, 3, 'die Legende erklärt alle drei Marken');
+  assert.strictEqual(ansicht.legende, 4, 'die Legende erklärt alle vier Marken');
   assert.strictEqual(ansicht.liste, 1, 'die kommende Abwesenheit steht in der Liste');
 
   const pm = await ctx.newPage();
@@ -2708,6 +2708,103 @@ async function pruefeTerminePersistenz() {
   console.log('OK  Termine: Speichern, Neuladen, Sicherung, alte Stände');
 }
 
+/* Kalender: eigene Termine im Monatsraster und in der Liste; Dialog zum Anlegen, Bearbeiten, Löschen; Viewer nur lesend. */
+async function pruefeKalenderTermine() {
+  const browser = await chromium.launch();
+  const fehler = [];
+  const sm = await browser.newPage();
+  sm.on('pageerror', e => fehler.push(e.message));
+  await sm.goto(DATEI('BR-Sitzungsmanager.html'));
+  await sm.waitForFunction('typeof APP_MODUS !== "undefined"', null, { timeout: 5000 });
+
+  /* Zukunft relativ zu heuteIso(): der 10.–12. des Folgemonats, damit alle drei Tage im selben Monatsraster liegen. */
+  await sm.evaluate(`
+    (() => {
+      ${AUFBAU}
+      window.__von = monatVerschieben(heuteIso().slice(0, 7), 1) + '-10';
+      window.__bis = monatVerschieben(heuteIso().slice(0, 7), 1) + '-12';
+      ui.ansicht = 'urlaub'; ui.urlaubMonat = window.__von.slice(0, 7);
+      renderHaupt();
+    })()
+  `);
+  const c = '#hauptInhalt ';
+  /* Der Sperrschirm fängt echte Mausklicks ab; die Ansicht wird direkt per DOM bedient. */
+  const klick = sel => sm.evaluate('document.querySelector(' + JSON.stringify(sel) + ').click()');
+  assert.ok(/Kalender/.test(await sm.textContent('#btnUrlaub')), 'Sidebar-Knopf heißt „Kalender"');
+  assert.strictEqual(await sm.textContent(c + 'h2'), 'Kalender');
+  assert.ok(await sm.$(c + '#kalTerminNeu') && await sm.$(c + '#kalMeldungen'), 'Schreibrechte: beide Knöpfe da');
+
+  const fuellen = (titel, extra) => sm.evaluate(`
+    (() => {
+      const d = document.getElementById('terminDialog');
+      const f = n => d.querySelector('[data-f="' + n + '"]');
+      f('titel').value = ${JSON.stringify(titel)};
+      f('von').value = window.__von; f('bis').value = window.__bis;
+      ${extra || ''}
+      d.querySelector('#terminSpeichern').click();
+    })()
+  `);
+
+  /* Titel leer → kein Termin */
+  await klick(c + '#kalTerminNeu');
+  assert.strictEqual(await sm.inputValue('#terminDialog [data-f="vorlauf"]'), '7', 'Standard-Vorlauf 7 Tage');
+  await fuellen('');
+  assert.strictEqual(await sm.evaluate('daten.termine.length'), 0, 'ohne Titel wird nichts gespeichert');
+  assert.ok(await sm.isVisible('#terminDialog'), 'Dialog bleibt mit Hinweis offen');
+  await sm.evaluate(`document.getElementById('terminDialog').close()`);
+
+  /* Anlegen */
+  await klick(c + '#kalTerminNeu');
+  await fuellen('Schulung § 37', `f('vorlauf').value = '3'; f('uhrzeit').value = '09:30';`);
+  const r = await sm.evaluate(`({
+    n: daten.termine.length, vorlauf: daten.termine[0].vorlauf, id: daten.termine[0].id,
+    zellen: document.querySelectorAll('#hauptInhalt .kal-tag .kal-termin').length,
+    liste: document.querySelectorAll('#hauptInhalt [data-termin-id]:not(.kal-termin)').length,
+    text: document.getElementById('hauptInhalt').textContent
+  })`);
+  assert.strictEqual(r.n, 1);
+  assert.strictEqual(r.vorlauf, 3);
+  assert.ok(r.id, 'stabile id');
+  assert.strictEqual(r.zellen, 3, 'drei Tageszellen');
+  assert.strictEqual(r.liste, 1, 'eine Zeile unter „Kommende Termine"');
+  assert.ok(r.text.includes('Kommende Termine') && r.text.includes('Schulung § 37') && r.text.includes('3 Tage vorher'), 'Liste mit Erinnerung');
+
+  /* Bearbeiten */
+  await klick(c + '.kal-termin');
+  assert.strictEqual(await sm.inputValue('#terminDialog [data-f="titel"]'), 'Schulung § 37');
+  await fuellen('Schulung § 37 BetrVG', `f('vorlauf').value = '14';`);
+  const b = await sm.evaluate('({ n: daten.termine.length, t: daten.termine[0].titel, v: daten.termine[0].vorlauf, id: daten.termine[0].id })');
+  assert.deepStrictEqual([b.n, b.t, b.v, b.id], [1, 'Schulung § 37 BetrVG', 14, r.id], 'Bearbeiten ersetzt, behält die id');
+
+  /* Löschen über die Listenzeile */
+  await klick(c + '[data-termin-id]:not(.kal-termin)');
+  await klick('#terminDialog #terminLoeschen');
+  await klick('#dlgBestaetigen #bstOk');
+  assert.strictEqual(await sm.evaluate('daten.termine.length'), 0, 'Termin gelöscht');
+
+  /* Viewer: nur lesend */
+  const v = await sm.evaluate(`
+    (() => {
+      daten.termine = [{ id: 'x', titel: 'Bestand', von: window.__von, vorlauf: 7 }];
+      sitzungsRolle = 'viewer'; renderHaupt();
+      const c = document.getElementById('hauptInhalt');
+      const knoepfe = !!c.querySelector('#kalTerminNeu') || !!c.querySelector('#kalMeldungen');
+      terminDialog(null);
+      const d = document.getElementById('terminDialog');
+      const f = n => d.querySelector('[data-f="' + n + '"]');
+      if (f('titel')) { f('titel').value = 'Neu'; f('von').value = window.__von; }
+      const s = d.querySelector('#terminSpeichern'); if (s) s.click();
+      return { knoepfe: knoepfe, n: daten.termine.length, titel: daten.termine[0].titel };
+    })()
+  `);
+  assert.strictEqual(v.knoepfe, false, 'Viewer sieht keine Knöpfe');
+  assert.deepStrictEqual([v.n, v.titel], [1, 'Bestand'], 'Viewer ändert nichts');
+
+  assert.deepStrictEqual(fehler, [], 'keine Laufzeitfehler');
+  await browser.close();
+  console.log('OK  Kalender: Termine anlegen, bearbeiten, löschen; Viewer nur lesend');
+}
+
 /* Nur ein Tab schreibt (Web Lock je Datenbank); Reload/Ausblenden verliert keine Änderung. */
 async function pruefeEinSchreibenderTab() {
   const browser = await chromium.launch();
@@ -3152,6 +3249,7 @@ async function pruefeEdgeWarnung() {
   await pruefeProtokollInhalt();
   await pruefeEchtePersistenz();
   await pruefeTerminePersistenz();
+  await pruefeKalenderTermine();
   await pruefeEinSchreibenderTab();
   console.log('\nAlle Browser-Prüfungen bestanden.');
 })().catch(e => { console.error(e); process.exit(1); });

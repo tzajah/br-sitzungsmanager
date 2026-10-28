@@ -1472,12 +1472,16 @@ function renderUrlaubAnsicht(c) {
 
   const alle = urlaubNormieren(daten.urlaub);
   const kommend = alle.filter(e => e.bis >= heute);
+  const schreib = darfBearbeiten();
+  const termine = terminNormieren(daten.termine).filter(t => t.bis >= heute);
 
   c.innerHTML =
     '<div class="kopfzeile"><div>' +
-      '<h2>Urlaubskalender</h2>' +
-      '<div class="kopf-kennung">Abwesenheiten des Gremiums</div></div>' +
+      '<h2>Kalender</h2>' +
+      '<div class="kopf-kennung">Termine, Abwesenheiten und Sitzungen des Gremiums</div></div>' +
       '<div class="kopf-aktionen">' +
+        (schreib ? '<button class="btn" id="kalMeldungen">Meldungen einlesen …</button>' +
+          '<button class="btn btn-primaer" id="kalTerminNeu">+ Termin</button>' : '') +
         '<div class="kal-nav">' +
           '<button class="btn btn-symbol" id="kalZurueck" title="Vorheriger Monat" aria-label="Vorheriger Monat"><svg class="ic"><use href="#ic-links"/></svg></button>' +
           '<span class="kal-monat">' + esc(k.monatName) + ' ' + k.jahr + '</span>' +
@@ -1488,8 +1492,8 @@ function renderUrlaubAnsicht(c) {
 
     (!alle.length
       ? '<div class="karte"><div class="karte-koerper klein-grau">Noch keine Abwesenheiten erfasst. ' +
-        'Die Mitglieder melden ihre Zeiträume mit <b>br-urlaub-melden.html</b>; die Meldungen werden unter ' +
-        '„Admin-Menü" → „Urlaub" eingelesen.</div></div>'
+        'Die Mitglieder melden ihre Zeiträume mit <b>br-urlaub-melden.html</b>; die Meldungen werden hier im Kalender ' +
+        'mit „Meldungen einlesen …" eingelesen.</div></div>'
       : '') +
 
     '<div class="karte"><div class="karte-koerper">' +
@@ -1503,6 +1507,8 @@ function renderUrlaubAnsicht(c) {
           if (t.sitzungen.length) kl.push('sitzung');
           return '<div class="' + kl.join(' ') + '">' +
             '<div class="kal-zahl">' + t.tag + '</div>' +
+            t.termine.map(x => '<div class="kal-termin" data-termin-id="' + esc(x.id) + '" title="' + esc(terminDetails(x)) + '">' +
+              esc(x.titel) + '</div>').join('') +
             t.sitzungen.map(s => '<div class="kal-sitzung" title="' + esc('Sitzung Nr. ' + s.nr) + '">Sitzung ' + esc(s.nr) + '</div>').join('') +
             t.abwesend.map(e => '<div class="kal-weg" title="' + esc(e.name + ' · ' + e.grund + ' · ' +
               fmtDatum(e.von) + ' bis ' + fmtDatum(e.bis)) + '">' + esc(urlaubKurzname(e.name)) + '</div>').join('') +
@@ -1511,10 +1517,22 @@ function renderUrlaubAnsicht(c) {
       '</div>' +
       '<div class="kal-legende">' +
         '<span><i class="lg-sitzung"></i>Sitzungstermin</span>' +
+        '<span><i class="lg-termin"></i>Termin</span>' +
         '<span><i class="lg-weg"></i>Abwesend</span>' +
         '<span><i class="lg-heute"></i>Heute</span>' +
       '</div>' +
     '</div></div>' +
+
+    (termine.length
+      ? '<div class="karte"><div class="karte-kopf"><h3>Kommende Termine</h3></div>' +
+        '<div class="karte-koerper"><table class="tn-tabelle"><thead><tr>' +
+        '<th style="width:30%">Zeitraum</th><th style="width:12%">Uhrzeit</th><th>Titel</th><th style="width:22%">Erinnerung</th>' +
+        '</tr></thead><tbody>' +
+        termine.map(t => '<tr data-termin-id="' + esc(t.id) + '"' + (schreib ? ' style="cursor:pointer"' : '') + ' title="' + esc(terminDetails(t)) + '">' +
+          '<td>' + esc(terminZeitraum(t)) + '</td><td class="mono">' + esc(t.uhrzeit) + '</td>' +
+          '<td><b>' + esc(t.titel) + '</b></td><td>' + esc(terminVorlaufLabel(t.vorlauf)) + '</td></tr>').join('') +
+        '</tbody></table></div></div>'
+      : '') +
 
     (kommend.length
       ? '<div class="karte"><div class="karte-kopf"><h3>Kommende Abwesenheiten</h3></div>' +
@@ -1537,6 +1555,77 @@ function renderUrlaubAnsicht(c) {
   c.querySelector('#kalZurueck').onclick = () => { ui.urlaubMonat = monatVerschieben(ui.urlaubMonat, -1); renderHaupt(); };
   c.querySelector('#kalVor').onclick = () => { ui.urlaubMonat = monatVerschieben(ui.urlaubMonat, 1); renderHaupt(); };
   c.querySelector('#kalHeute').onclick = () => { ui.urlaubMonat = heute.slice(0, 7); renderHaupt(); };
+  if (schreib) {
+    c.querySelector('#kalTerminNeu').onclick = () => terminDialog(null);
+    c.querySelector('#kalMeldungen').onclick = () => urlaubMeldungenWaehlen(renderHaupt);
+    c.querySelectorAll('[data-termin-id]').forEach(el => el.onclick = () => terminDialog(el.dataset.terminId));
+  }
+}
+
+function terminVorlaufLabel(tage) { return (TERMIN_VORLAUF.find(v => v.tage === tage) || {}).label || ''; }
+function terminZeitraum(t) {
+  return fmtDatum(t.von) + (t.bis !== t.von ? ' – ' + fmtDatum(t.bis) : '');
+}
+function terminDetails(t) {
+  return t.titel + ' · ' + terminZeitraum(t) + (t.uhrzeit ? ' · ' + t.uhrzeit + ' Uhr' : '') +
+    ' · Erinnerung: ' + terminVorlaufLabel(t.vorlauf) + (t.notiz ? '\n' + t.notiz : '');
+}
+
+/* Dialog zum Anlegen/Bearbeiten eines Kalendertermins; id = null legt neu an. */
+function terminDialog(id) {
+  let dlg = document.getElementById('terminDialog');
+  if (!dlg) { dlg = document.createElement('dialog'); dlg.id = 'terminDialog'; document.body.appendChild(dlg); }
+  const t = id ? terminNormieren(daten.termine).find(x => x.id === id) : null;
+  if (id && !t) return;
+  const w = t || { titel: '', von: '', bis: '', uhrzeit: '', notiz: '', vorlauf: 7 };
+  dlg.innerHTML = '<div class="dlg-kopf"><h3>' + (t ? 'Termin bearbeiten' : 'Neuer Termin') + '</h3></div>' +
+    '<div class="dlg-koerper">' +
+      '<label class="feld">Titel<input type="text" class="eingabe" data-f="titel" value="' + esc(w.titel) + '"></label>' +
+      '<label class="feld">Von<input type="date" class="eingabe" data-f="von" value="' + esc(w.von) + '"></label>' +
+      '<label class="feld">Bis (leer = eintägig)<input type="date" class="eingabe" data-f="bis" value="' + esc(w.bis === w.von ? '' : w.bis) + '"></label>' +
+      '<label class="feld">Uhrzeit (optional)<input type="time" class="eingabe" data-f="uhrzeit" value="' + esc(w.uhrzeit) + '"></label>' +
+      '<label class="feld">Erinnerung<select class="eingabe" data-f="vorlauf">' +
+        TERMIN_VORLAUF.map(v => '<option value="' + v.tage + '"' + (v.tage === w.vorlauf ? ' selected' : '') + '>' + esc(v.label) + '</option>').join('') +
+      '</select></label>' +
+      '<label class="feld">Notiz<textarea class="eingabe" data-f="notiz" rows="3">' + esc(w.notiz) + '</textarea></label>' +
+      '<p class="klein-grau" id="terminHinweis"></p>' +
+    '</div>' +
+    '<div class="dlg-fuss">' +
+      (t ? '<button class="btn btn-gefahr" id="terminLoeschen" style="margin-right:auto">Löschen</button>' : '') +
+      '<button class="btn" id="terminAbbr">Abbrechen</button>' +
+      '<button class="btn btn-primaer" id="terminSpeichern">Speichern</button></div>';
+  const f = n => dlg.querySelector('[data-f="' + n + '"]');
+  const hinweis = text => { dlg.querySelector('#terminHinweis').textContent = text; };
+  const danach = () => {
+    speichern(); renderHaupt();
+    if (typeof glockeAktualisieren === 'function') glockeAktualisieren();
+  };
+  dlg.querySelector('#terminAbbr').onclick = () => dlg.close();
+  dlg.querySelector('#terminSpeichern').onclick = () => {
+    if (!darfBearbeiten()) return;
+    if (!f('titel').value.trim() || !f('von').value) return hinweis('Titel und Beginn sind Pflicht.');
+    const bis = f('bis').value || f('von').value;
+    /* terminNormieren würde einen Termin mit Ende vor Beginn still verwerfen – daher vorher abfangen. */
+    if (bis < f('von').value) return hinweis('Das Ende liegt vor dem Beginn.');
+    const neu = {
+      id: t ? t.id : undefined, titel: f('titel').value, von: f('von').value, bis: bis,
+      uhrzeit: f('uhrzeit').value, notiz: f('notiz').value,
+      vorlauf: f('vorlauf').value === 'null' ? null : parseInt(f('vorlauf').value, 10),
+      geaendertAm: new Date().toISOString()
+    };
+    daten.termine = terminNormieren(terminNormieren(daten.termine).filter(x => !t || x.id !== t.id).concat(neu));
+    dlg.close();
+    danach();
+  };
+  if (t) dlg.querySelector('#terminLoeschen').onclick = () => {
+    if (!darfBearbeiten()) return;
+    bestaetigen('Termin löschen', '„' + t.titel + '“ wirklich löschen?', () => {
+      dlg.close();
+      daten.termine = terminNormieren(daten.termine).filter(x => x.id !== t.id);
+      danach();
+    }, 'Löschen', true);
+  };
+  dlg.showModal();
 }
 
 /* Sitzungsstand: nur im Protokollmodul, dauerhaft sichtbar (Beschlussfähigkeit, Fortschritt, Pause – sonst weggescrollt). */

@@ -575,6 +575,8 @@ input.eingabe,select.eingabe,textarea.eingabe{
 .kal-sitzung{font-family:var(--schrift-kennfeld);font-size:11px;font-weight:700;letter-spacing:.04em;
   color:#fff;background:var(--akzent-dunkel);padding:1px calc(var(--takt) * 1.5);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.kal-termin{font-size:11px;color:var(--akzent-dunkel);background:#fff;border:1px solid var(--akzent);
+  padding:0 calc(var(--takt) * 1.25);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer}
 .kal-weg{font-size:11px;color:var(--warn);background:var(--warn-bg);border:1px solid var(--warn-signal);
   padding:0 calc(var(--takt) * 1.25);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:default}
 .kal-legende{display:flex;gap:calc(var(--takt) * 4);flex-wrap:wrap;margin-top:calc(var(--takt) * 3);
@@ -582,13 +584,14 @@ input.eingabe,select.eingabe,textarea.eingabe{
 .kal-legende span{display:inline-flex;align-items:center;gap:calc(var(--takt) * 1.5)}
 .kal-legende i{width:12px;height:12px;flex:none}
 .kal-legende .lg-sitzung{background:var(--akzent)}
+.kal-legende .lg-termin{background:#fff;border:1px solid var(--akzent)}
 .kal-legende .lg-weg{background:var(--warn-bg);border:1px solid var(--warn-signal)}
 .kal-legende .lg-heute{background:#fff;box-shadow:inset 0 0 0 2px var(--akzent)}
 .kal-jetzt{font-family:var(--schrift-kennfeld);font-size:10px;letter-spacing:.08em;text-transform:uppercase;
   background:var(--warn-signal);color:#231A05;padding:0 calc(var(--takt) * 1.5);margin-left:calc(var(--takt) * 1.5)}
 @media(max-width:760px){
   .kal-tag{min-height:74px}
-  .kal-weg,.kal-sitzung{font-size:10px}
+  .kal-weg,.kal-sitzung,.kal-termin{font-size:10px}
   .kal-monat{min-width:130px;font-size:14px}
 }
 
