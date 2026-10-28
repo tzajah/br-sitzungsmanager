@@ -2691,29 +2691,37 @@ async function echteSeite(browser, fehler) {
   return { seite, ids };
 }
 
-/* Termine (Kalender) reisen mit: Ablage, Neuladen, Sicherung, alte Stände ohne das Feld. */
+/* Termine (Kalender) reisen mit: Speichern, echtes Neuladen (sessionStorage), echte verschlüsselte Sicherung in neuem Kontext, alte Stände. */
 async function pruefeTerminePersistenz() {
   const browser = await chromium.launch();
   const fehler = [];
-  const { seite } = await echteSeite(browser, fehler);
-  const r = await seite.evaluate(`(async () => {
+  const oeffnen = async kontext => {
+    const s = await kontext.newPage();
+    s.on('pageerror', e => fehler.push('pageerror: ' + e.message));
+    await s.goto(DATEI('BR-Sitzungsmanager.html'));
+    await s.waitForFunction('typeof APP_MODUS !== "undefined" && !!Speicher.db', null, { timeout: 5000 });
+    return s;
+  };
+  const seite = await oeffnen(await kontextMitZugang(browser));
+  await anmeldenPerDatei(seite, await testSicherung(seite));
+  await seite.evaluate(`(async () => {
     daten.termine = [{ id: 't1', titel: 'Kündigung Müller', von: '2026-11-10', vorlauf: 3 }];
     await speichern(true);
-    const geladen = await allesLaden();                         /* wie nach dem Neuladen */
-    let gesamt = null;
-    sicherungVerpacken = async (mk, zugang, nutzlast) => { gesamt = nutzlast; return {}; };
-    dateiHerunterladen = () => {};
-    textAbfrage = async () => 'Test';
-    await projektDateiSpeichern();
-    daten.termine = [];
-    await projektUebernehmen(JSON.parse(JSON.stringify(gesamt)));
-    return { geladen: geladen.termine.map(t => t.id), gesichert: (gesamt.termine || []).map(t => t.id),
-             zurueck: daten.termine.map(t => t.id), alt: migriere({ sitzungen: [] }).termine,
-             gremium: GREMIUM_FELDER.includes('termine') };
   })()`);
-  assert.deepStrictEqual(r.geladen, ['t1'], 'Termine überstehen das Laden');
-  assert.deepStrictEqual(r.gesichert, ['t1'], 'Termine stehen in der Sicherung');
-  assert.deepStrictEqual(r.zurueck, ['t1'], 'Termine kommen aus der Sicherung zurück');
+  await seite.reload();   /* Fortsetzen über sessionStorage, ohne Passwort */
+  await seite.waitForFunction('typeof daten !== "undefined" && daten && Array.isArray(daten.termine)', null, { timeout: 15000 });
+  assert.deepStrictEqual(await seite.evaluate('daten.termine.map(t => t.id)'), ['t1'], 'Termine überstehen das Neuladen');
+
+  const [download] = await Promise.all([seite.waitForEvent('download'), (async () => {
+    await seite.keyboard.press('Control+s');
+    await seite.click('#dlgBestaetigen #txtOk');
+  })()]);
+  const datei = fs.readFileSync(await download.path(), 'utf8');
+  const seite2 = await oeffnen(await kontextMitZugang(browser));
+  await anmeldenPerDatei(seite2, datei);
+  assert.deepStrictEqual(await seite2.evaluate('daten.termine.map(t => t.id)'), ['t1'], 'Termine kommen aus der echten Sicherung zurück');
+
+  const r = await seite2.evaluate(`({ alt: migriere({ sitzungen: [] }).termine, gremium: GREMIUM_FELDER.includes('termine') })`);
   assert.deepStrictEqual(r.alt, [], 'alter Stand ohne Termine → leere Liste');
   assert.strictEqual(r.gremium, false, 'termine nicht in GREMIUM_FELDER');
   assert.deepStrictEqual(fehler, [], 'keine Laufzeitfehler');
