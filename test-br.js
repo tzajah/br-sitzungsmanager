@@ -401,6 +401,13 @@ assert.deepStrictEqual(e3.faellig, []);                                    // na
 const heuteAngelegt = roh(k.terminNormieren([{ id: 'x', titel: 'Frist', von: '2026-11-20', vorlauf: 14 }]));
 assert.strictEqual(roh(k.erinnerungen(heuteAngelegt, '2026-11-20', new Set())).faellig.length, 1);
 assert.strictEqual(k.terminGelesenSchluessel(kuendigung), 'a|2026-11-10|3');
+/* nur echte Kalenderdaten: Monat 13, 30. Februar, fünfstelliges Jahr fallen weg */
+assert.deepStrictEqual(roh(k.terminNormieren([
+  { id: 'm', titel: 'Monat 13', von: '2026-13-45' },
+  { id: 'f', titel: '30. Februar', von: '2026-02-30' },
+  { id: 'j', titel: 'Jahr', von: '20261-11-10' },
+  { id: 'o', titel: 'Bis kaputt', von: '2026-11-01', bis: '2026-11-31' }
+])), []);
 const kal = roh(k.urlaubKalender({ urlaub: [], sitzungen: [], termine: n }, '2026-11', '2026-11-01'));
 const tag4 = kal.wochen.flat().find(t => t.iso === '2026-11-04');
 assert.deepStrictEqual(tag4.termine.map(t => t.id), ['d']);

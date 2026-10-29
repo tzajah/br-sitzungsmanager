@@ -624,7 +624,8 @@ function terminNormieren(liste) {
       vorlauf: TERMIN_VORLAUF.some(v => v.tage === e.vorlauf) ? e.vorlauf : 7,
       geaendertAm: e.geaendertAm || ''
     }))
-    .filter(t => t.titel && datum.test(t.von) && datum.test(t.bis) && t.bis >= t.von)
+    /* Rundlauf über isoPlusTage: nur echte Kalenderdaten (kein 2026-13-45, kein 30. Februar). */
+    .filter(t => t.titel && datum.test(t.von) && datum.test(t.bis) && isoPlusTage(t.von, 0) === t.von && isoPlusTage(t.bis, 0) === t.bis && t.bis >= t.von)
     .sort((a, b) => a.von < b.von ? -1 : a.von > b.von ? 1
       : a.uhrzeit < b.uhrzeit ? -1 : a.uhrzeit > b.uhrzeit ? 1 : a.titel.localeCompare(b.titel, 'de'));
 }

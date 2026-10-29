@@ -1613,13 +1613,17 @@ function terminDialog(id) {
       vorlauf: f('vorlauf').value === 'null' ? null : parseInt(f('vorlauf').value, 10),
       geaendertAm: new Date().toISOString()
     };
-    daten.termine = terminNormieren(terminNormieren(daten.termine).filter(x => !t || x.id !== t.id).concat(neu));
+    /* Ersatz zuerst einzeln prüfen: sonst ginge der Bestand verloren, wenn terminNormieren ihn verwirft (z. B. Jahr 20261). */
+    const kandidat = terminNormieren([neu])[0];
+    if (!kandidat) return hinweis('Das Datum ist ungültig.');
+    daten.termine = terminNormieren(terminNormieren(daten.termine).filter(x => !t || x.id !== t.id).concat(kandidat));
     dlg.close();
     danach();
   };
   if (t) dlg.querySelector('#terminLoeschen').onclick = () => {
     if (!darfBearbeiten()) return;
     bestaetigen('Termin löschen', '„' + t.titel + '“ wirklich löschen?', () => {
+      if (!darfBearbeiten()) return;   /* Rolle kann sich vor der Bestätigung geändert haben */
       dlg.close();
       daten.termine = terminNormieren(daten.termine).filter(x => x.id !== t.id);
       danach();
@@ -1630,6 +1634,8 @@ function terminDialog(id) {
 
 /* Erinnerungen: Glocke, Liste und Hinweis nach der Anmeldung. „Gelesen" gilt nur für diesen Browser (localStorage), nie in daten. */
 const ERINNERUNG_GELESEN_KEY = 'br-erinnerungen-gelesen';
+/* Schlüssel, die für diese Seite ungelesen gelten, falls der Speicher das Zurücksetzen nicht annimmt. */
+const erinnerungUngelesen = new Set();
 function erinnerungenGelesen() {
   let roh;
   try { roh = JSON.parse(localStorage.getItem(ERINNERUNG_GELESEN_KEY) || '[]'); } catch (e) { return new Set(); }
@@ -1637,16 +1643,20 @@ function erinnerungenGelesen() {
   /* Schlüssel nur behalten, solange ihr Termin noch läuft (bis >= heute). */
   const heute = heuteIso();
   const gueltig = new Set(terminNormieren((daten && daten.termine) || []).filter(t => t.bis >= heute).map(terminGelesenSchluessel));
-  const set = new Set(roh.filter(k => gueltig.has(k)));
+  const set = new Set(roh.filter(k => gueltig.has(k) && !erinnerungUngelesen.has(k)));
   if (set.size !== roh.length) { try { localStorage.setItem(ERINNERUNG_GELESEN_KEY, JSON.stringify(Array.from(set))); } catch (e) { /* egal */ } }
   return set;
 }
 function erinnerungGelesenSetzen(schluessel, gelesen) {
+  if (gelesen) erinnerungUngelesen.delete(schluessel); else erinnerungUngelesen.add(schluessel);
   try {
     const set = erinnerungenGelesen();
     if (gelesen) set.add(schluessel); else set.delete(schluessel);
     localStorage.setItem(ERINNERUNG_GELESEN_KEY, JSON.stringify(Array.from(set)));
-  } catch (e) { /* Speicher gesperrt: bleibt ungelesen */ }
+  } catch (e) {
+    /* Speicher gesperrt: lieber zu oft erinnern – den ganzen Schlüssel löschen (alles ungelesen), sonst bliebe ein altes „gelesen" stehen. */
+    try { localStorage.removeItem(ERINNERUNG_GELESEN_KEY); } catch (e2) { /* Merker im Speicher greift */ }
+  }
 }
 function erinnerungenStand() {
   return erinnerungen(terminNormieren((daten && daten.termine) || []), heuteIso(), erinnerungenGelesen());

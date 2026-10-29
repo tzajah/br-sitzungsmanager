@@ -2757,6 +2757,22 @@ async function pruefeErinnerungen() {
   await sm.evaluate(`daten.termine.find(t => t.id === 'a').vorlauf = 3; daten.termine.find(t => t.id === 'a').von = isoPlusTage(heuteIso(), 1); glockeAktualisieren();`);
   assert.strictEqual(await zahl(), '1', 'Vorlauf geändert → wieder ungelesen');
 
+  /* setItem wirft beim Zurücksetzen auf „ungelesen" → Rückfall auf ungelesen (lieber zu oft erinnern) */
+  await sm.evaluate('zeigeErinnerungsListe(); document.querySelector("#erinnerungListe [data-gelesen]").click()');
+  assert.strictEqual(await zahl(), '', 'vorher gelesen');
+  await sm.evaluate(`window.__setItem = Storage.prototype.setItem; Storage.prototype.setItem = () => { throw new Error('voll'); };`);
+  await sm.evaluate('document.querySelector("#erinnerungListe [data-gelesen]").click()');
+  assert.strictEqual(await zahl(), '1', 'setItem wirft → wieder ungelesen');
+  assert.strictEqual(await sm.evaluate('localStorage.getItem("br-erinnerungen-gelesen")'), null, 'Gelesen-Schlüssel entfernt');
+  await sm.evaluate(`Storage.prototype.setItem = window.__setItem;`);
+  /* auch removeItem wirft → für die laufende Seite bleibt es ungelesen (Merker im Speicher) */
+  await sm.evaluate('document.querySelector("#erinnerungListe [data-gelesen]").click()');
+  assert.strictEqual(await zahl(), '', 'wieder gelesen');
+  await sm.evaluate(`window.__removeItem = Storage.prototype.removeItem; Storage.prototype.setItem = () => { throw new Error('voll'); }; Storage.prototype.removeItem = () => { throw new Error('voll'); };`);
+  await sm.evaluate('document.querySelector("#erinnerungListe [data-gelesen]").click()');
+  assert.strictEqual(await zahl(), '1', 'setItem und removeItem werfen → ungelesen');
+  await sm.evaluate(`Storage.prototype.setItem = window.__setItem; Storage.prototype.removeItem = window.__removeItem; document.getElementById('erinnerungListe').close();`);
+
   /* localStorage wirft → kein Absturz, alles ungelesen */
   await sm.evaluate(`Storage.prototype.getItem = () => { throw new Error('gesperrt'); }; Storage.prototype.setItem = () => { throw new Error('gesperrt'); };`);
   await sm.evaluate('glockeAktualisieren()');
@@ -2885,6 +2901,21 @@ async function pruefeKalenderTermine() {
   await fuellen('Schulung § 37 BetrVG', `f('vorlauf').value = '14';`);
   const b = await sm.evaluate('({ n: daten.termine.length, t: daten.termine[0].titel, v: daten.termine[0].vorlauf, id: daten.termine[0].id })');
   assert.deepStrictEqual([b.n, b.t, b.v, b.id], [1, 'Schulung § 37 BetrVG', 14, r.id], 'Bearbeiten ersetzt, behält die id');
+
+  /* Ungültiges Datum beim Bearbeiten: Bestand bleibt, Hinweis im Dialog */
+  await klick(c + '.kal-termin');
+  await fuellen('Schulung § 37 BetrVG', `f('von').value = '20261-11-10'; f('bis').value = '';`);
+  assert.strictEqual(await sm.evaluate('daten.termine.length'), 1, 'ungültiges Datum: Termin bleibt erhalten');
+  assert.ok(await sm.isVisible('#terminDialog') && (await sm.textContent('#terminHinweis')).length > 0, 'Dialog bleibt mit Hinweis offen');
+  await sm.evaluate(`document.getElementById('terminDialog').close()`);
+
+  /* Löschen: Rollenwechsel vor der Bestätigung ändert nichts */
+  await klick(c + '.kal-termin');
+  await klick('#terminDialog #terminLoeschen');
+  await sm.evaluate(`sitzungsRolle = 'viewer'`);
+  await klick('#dlgBestaetigen #bstOk');
+  assert.strictEqual(await sm.evaluate('daten.termine.length'), 1, 'Viewer-Wechsel vor Bestätigung: nichts gelöscht');
+  await sm.evaluate(`sitzungsRolle = 'arbeit'; renderHaupt();`);
 
   /* Löschen über die Listenzeile */
   await klick(c + '[data-termin-id]:not(.kal-termin)');
