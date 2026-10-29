@@ -1193,7 +1193,7 @@ async function projektBeitreten(datei) {
     else dirtySitzungen.clear();
     if (viewerLock) schreibLockFreigeben();
     sitzungMerken();
-    await appStarten(); sperrschirmWeg();
+    await appStarten(true); sperrschirmWeg();
     zeigeToast('Angemeldet als ' + (inst.rolle === 'admin' ? 'Debug-Mode' : (inst.rolle === 'arbeit' ? 'Arbeitsmodus' : 'Nur-Lese-Ansicht')) + '.' +
       (ersetzen ? '' : !darfErsetzen
         ? ' Ein anderer Tab bearbeitet gerade – die Sicherung wurde nicht in diesen Browser übernommen' +
@@ -1454,7 +1454,7 @@ function renderSeitenleiste() {
 
 /* Hauptbereich */
 
-function renderAlles() { renderSeitenleiste(); renderSitzungsstand(); renderHaupt(); }
+function renderAlles() { renderSeitenleiste(); renderSitzungsstand(); renderHaupt(); glockeAktualisieren(); }
 
 /* Urlaubskalender: Sitzungstermine liegen im selben Raster, damit Kollisionen ohne Suche sichtbar sind. */
 /* Kurzform „Erika M." für die Tageszellen; volle Namen stehen im Titel/in der Liste. */
@@ -1598,7 +1598,7 @@ function terminDialog(id) {
   const hinweis = text => { dlg.querySelector('#terminHinweis').textContent = text; };
   const danach = () => {
     speichern(); renderHaupt();
-    if (typeof glockeAktualisieren === 'function') glockeAktualisieren();
+    glockeAktualisieren();
   };
   dlg.querySelector('#terminAbbr').onclick = () => dlg.close();
   dlg.querySelector('#terminSpeichern').onclick = () => {
@@ -1626,6 +1626,103 @@ function terminDialog(id) {
     }, 'Löschen', true);
   };
   dlg.showModal();
+}
+
+/* Erinnerungen: Glocke, Liste und Hinweis nach der Anmeldung. „Gelesen" gilt nur für diesen Browser (localStorage), nie in daten. */
+const ERINNERUNG_GELESEN_KEY = 'br-erinnerungen-gelesen';
+function erinnerungenGelesen() {
+  let roh;
+  try { roh = JSON.parse(localStorage.getItem(ERINNERUNG_GELESEN_KEY) || '[]'); } catch (e) { return new Set(); }
+  if (!Array.isArray(roh)) return new Set();
+  /* Schlüssel nur behalten, solange ihr Termin noch läuft (bis >= heute). */
+  const heute = heuteIso();
+  const gueltig = new Set(terminNormieren((daten && daten.termine) || []).filter(t => t.bis >= heute).map(terminGelesenSchluessel));
+  const set = new Set(roh.filter(k => gueltig.has(k)));
+  if (set.size !== roh.length) { try { localStorage.setItem(ERINNERUNG_GELESEN_KEY, JSON.stringify(Array.from(set))); } catch (e) { /* egal */ } }
+  return set;
+}
+function erinnerungGelesenSetzen(schluessel, gelesen) {
+  try {
+    const set = erinnerungenGelesen();
+    if (gelesen) set.add(schluessel); else set.delete(schluessel);
+    localStorage.setItem(ERINNERUNG_GELESEN_KEY, JSON.stringify(Array.from(set)));
+  } catch (e) { /* Speicher gesperrt: bleibt ungelesen */ }
+}
+function erinnerungenStand() {
+  return erinnerungen(terminNormieren((daten && daten.termine) || []), heuteIso(), erinnerungenGelesen());
+}
+function glockeAktualisieren() {
+  const knopf = document.getElementById('btnGlocke'), zahlEl = document.getElementById('glockeZahl');
+  if (!knopf || !zahlEl || !daten) return;
+  const n = erinnerungenStand().faellig.filter(e => !e.gelesen).length;
+  zahlEl.textContent = n; zahlEl.hidden = n === 0;
+  knopf.setAttribute('aria-label', 'Benachrichtigungen, ' + n + ' ungelesen');
+}
+function erinnerungDialog(id) {
+  let dlg = document.getElementById(id);
+  if (!dlg) { dlg = document.createElement('dialog'); dlg.id = id; document.body.appendChild(dlg); }
+  return dlg;
+}
+function erinnerungDatum(t) { return terminZeitraum(t) + (t.uhrzeit ? ' · ' + t.uhrzeit + ' Uhr' : ''); }
+
+function zeigeErinnerungsListe() {
+  const dlg = erinnerungDialog('erinnerungListe');
+  const { faellig, demnaechst } = erinnerungenStand();
+  const zeile = (t, gelesen, mitKnopf) =>
+    '<div class="erinnerung ' + (mitKnopf ? (gelesen ? 'erinnerung-gelesen' : 'erinnerung-ungelesen') : '') + '">' +
+      '<button class="erinnerung-text" data-oeffne="' + esc(t.id) + '">' + esc(t.titel) +
+        '<span class="erinnerung-dat">' + esc(erinnerungDatum(t)) + '</span></button>' +
+      (mitKnopf ? '<button class="btn" data-gelesen="' + esc(t.id) + '">' + (gelesen ? 'Ungelesen' : 'Gelesen') + '</button>' : '') +
+    '</div>';
+  dlg.innerHTML = '<div class="dlg-kopf"><h3>Erinnerungen</h3></div><div class="dlg-koerper">' +
+    (faellig.length || demnaechst.length ? '' : '<p>Keine anstehenden Erinnerungen.</p>') +
+    (faellig.length ? '<div class="erinnerung-abschnitt" data-abschnitt="faellig"><h4>Fällig</h4>' +
+      faellig.map(e => zeile(e.termin, e.gelesen, true)).join('') + '</div>' : '') +
+    (demnaechst.length ? '<div class="erinnerung-abschnitt" data-abschnitt="demnaechst"><h4>Demnächst</h4>' +
+      demnaechst.map(t => zeile(t, false, false)).join('') + '</div>' : '') +
+    '</div><div class="dlg-fuss"><button class="btn" id="erinnerungZu">Schließen</button></div>';
+  dlg.querySelector('#erinnerungZu').onclick = () => dlg.close();
+  dlg.querySelectorAll('[data-oeffne]').forEach(b => b.onclick = () => {
+    const t = terminNormieren(daten.termine).find(x => x.id === b.dataset.oeffne);
+    dlg.close();
+    if (!t) return;
+    ui.ansicht = 'urlaub'; ui.urlaubMonat = t.von.slice(0, 7); renderHaupt();
+  });
+  dlg.querySelectorAll('[data-gelesen]').forEach(b => b.onclick = () => {
+    const e = faellig.find(x => x.termin.id === b.dataset.gelesen);
+    if (e) erinnerungGelesenSetzen(terminGelesenSchluessel(e.termin), !e.gelesen);
+    glockeAktualisieren(); zeigeErinnerungsListe();
+  });
+  if (!dlg.open) dlg.showModal();
+}
+
+/* Hinweis direkt nach „Datei laden" + Passwort (nicht beim Fortsetzen): nur fällige, noch ungelesene Erinnerungen. */
+function zeigeLoginErinnerungen() {
+  /* Ist schon ein anderer Dialog offen, erst nach dessen Schließen noch einmal prüfen. */
+  const offen = document.querySelector('dialog[open]');
+  if (offen) return offen.addEventListener('close', zeigeLoginErinnerungen, { once: true });
+  const dlg = erinnerungDialog('loginErinnerungen');
+  const zeichne = () => {
+    const liste = erinnerungenStand().faellig.filter(e => !e.gelesen);
+    if (!liste.length) { if (dlg.open) dlg.close(); glockeAktualisieren(); return; }
+    dlg.innerHTML = '<div class="dlg-kopf"><h3>Erinnerungen</h3></div><div class="dlg-koerper">' +
+      liste.map(e => '<div class="erinnerung erinnerung-ungelesen"><div class="erinnerung-text">' + esc(e.termin.titel) +
+        '<span class="erinnerung-dat">' + esc(erinnerungDatum(e.termin)) + '</span>' +
+        (e.termin.notiz ? '<span class="erinnerung-dat">' + esc(e.termin.notiz) + '</span>' : '') + '</div>' +
+        '<button class="btn" data-gelesen="' + esc(e.termin.id) + '">Gelesen</button></div>').join('') +
+      '</div><div class="dlg-fuss"><button class="btn" data-spaeter>Später</button>' +
+      '<button class="btn btn-primaer" data-alle>Alle gelesen</button></div>';
+    dlg.querySelector('[data-spaeter]').onclick = () => dlg.close();
+    dlg.querySelector('[data-alle]').onclick = () => { liste.forEach(e => erinnerungGelesenSetzen(terminGelesenSchluessel(e.termin), true)); zeichne(); };
+    dlg.querySelectorAll('[data-gelesen]').forEach(b => b.onclick = () => {
+      const e = liste.find(x => x.termin.id === b.dataset.gelesen);
+      if (e) erinnerungGelesenSetzen(terminGelesenSchluessel(e.termin), true);
+      zeichne();
+    });
+    glockeAktualisieren();
+    if (!dlg.open) dlg.showModal();
+  };
+  zeichne();
 }
 
 /* Sitzungsstand: nur im Protokollmodul, dauerhaft sichtbar (Beschlussfähigkeit, Fortschritt, Pause – sonst weggescrollt). */

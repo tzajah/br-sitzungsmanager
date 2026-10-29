@@ -1516,6 +1516,8 @@ function verkabeln() {
   document.getElementById('slArchiv').onchange = e => { ui.archivAnzeigen = e.target.checked; renderSeitenleiste(); };
   document.getElementById('btnBeschluesse').onclick = () => { ui.ansicht = 'beschluesse'; renderAlles(); };
   document.getElementById('btnAufgaben').onclick = () => { ui.ansicht = 'aufgaben'; renderAlles(); };
+  const glocke = document.getElementById('btnGlocke');
+  if (glocke) glocke.onclick = zeigeErinnerungsListe;
   document.getElementById('btnUrlaub').onclick = () => {
     if (!modusHatAnsicht('urlaub')) return;
     ui.ansicht = 'urlaub'; renderAlles();
@@ -1560,7 +1562,7 @@ function verkabeln() {
   });
 }
 
-async function appStarten() {
+async function appStarten(frischAngemeldet) {
   await schreibRechtPruefen();
   /* Reihenfolge bewusst: externe Dateien haben Vorrang, „Gremium" kommt zuletzt und überschreibt die Einzeldateien. */
   let externUebernommen = externeStandardTopsUebernehmen();
@@ -1599,6 +1601,8 @@ async function appStarten() {
     : (nurLesendWeilAndererTab ? 'In einem anderen Tab geöffnet – hier nur lesend.' : 'Nur-Lese-Ansicht · zum Bearbeiten mit dem Arbeits-Passwort anmelden.');
   setAutosaveInfo(startLabel);
   aktualisiereSicherungInfo();
+  glockeAktualisieren();
+  if (frischAngemeldet && modusHatAnsicht('urlaub')) zeigeLoginErinnerungen();
 }
 
 if (typeof document !== 'undefined') {

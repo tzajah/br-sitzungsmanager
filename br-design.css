@@ -92,7 +92,7 @@ a:hover{text-decoration-thickness:2px}
 .seitenleiste{background:var(--seitenleiste);color:var(--seitenleiste-text);
   display:flex;flex-direction:column;position:sticky;top:0;height:100vh;overflow-y:auto;
   border-right:2px solid var(--kante)}
-.marke{padding:calc(var(--takt) * 4) calc(var(--takt) * 4) calc(var(--takt) * 3)}
+.marke{position:relative;padding:calc(var(--takt) * 4) calc(var(--takt) * 4) calc(var(--takt) * 3)}
 .marke h1{font-family:var(--schrift-kennfeld);font-stretch:var(--kennfeld-breite);font-size:24px;color:#fff;
   letter-spacing:.03em;text-transform:uppercase;line-height:1.05}
 .marke-kennfeld{display:inline-flex;align-items:center;gap:calc(var(--takt) * 2);margin-top:calc(var(--takt) * 2);
@@ -101,6 +101,16 @@ a:hover{text-decoration-thickness:2px}
   border:1px solid var(--seitenleiste-linie);
   padding:calc(var(--takt) * .75) calc(var(--takt) * 2)}
 .marke-kennfeld::before{content:"";width:8px;height:8px;flex:none;background:var(--akzent)}
+.glocke{position:absolute;top:calc(var(--takt) * 3);right:calc(var(--takt) * 3);background:none;border:0;cursor:pointer;color:var(--seitenleiste-text);padding:calc(var(--takt) * 1.5)}
+.glocke .ic{width:20px;height:20px}
+.glocke:hover{background:rgba(255,255,255,.1)}
+.glocke-zahl{position:absolute;top:0;right:0;min-width:16px;height:16px;padding:0 4px;background:var(--akzent);color:#fff;font-size:10.5px;font-weight:700;line-height:16px;text-align:center}
+.erinnerung{display:flex;gap:calc(var(--takt) * 2);align-items:center;padding:calc(var(--takt) * 2) 0;border-bottom:1px solid var(--linie)}
+.erinnerung-text{flex:1;text-align:left;background:none;border:0;cursor:pointer;font:inherit;color:inherit;padding:0}
+.erinnerung-ungelesen .erinnerung-text{font-weight:700}
+.erinnerung-gelesen{opacity:.55}
+.erinnerung-dat{display:block;font-size:12px;color:var(--grau);font-weight:400}
+.erinnerung-abschnitt h4{margin:calc(var(--takt) * 3) 0 var(--takt);font-size:12px;text-transform:uppercase;letter-spacing:.08em}
 .marke-logo{display:block;max-width:100%;max-height:56px;object-fit:contain;background:#fff;
   padding:calc(var(--takt) * 1.5);margin-bottom:calc(var(--takt) * 3)}
 .farbwahl{display:flex;flex-wrap:wrap;gap:calc(var(--takt) * 2);align-items:center}

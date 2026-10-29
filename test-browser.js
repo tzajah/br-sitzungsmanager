@@ -2708,6 +2708,116 @@ async function pruefeTerminePersistenz() {
   console.log('OK  Termine: Speichern, Neuladen, Sicherung, alte Stände');
 }
 
+/* Erinnerungen: Glocke, Gelesen pro Browser (localStorage), Login-Hinweis nur nach echter Anmeldung. */
+async function pruefeErinnerungen() {
+  const browser = await chromium.launch();
+  const fehler = [];
+  const sm = await browser.newPage();
+  sm.on('pageerror', e => fehler.push(e.message));
+  await sm.goto(DATEI('BR-Sitzungsmanager.html'));
+  await sm.waitForFunction('typeof APP_MODUS !== "undefined"', null, { timeout: 5000 });
+  await sm.evaluate(`
+    (() => {
+      ${AUFBAU}
+      const h = heuteIso();
+      daten.termine = [
+        { id: 'a', titel: 'Frist A', von: isoPlusTage(h, 2), vorlauf: 7 },
+        { id: 'b', titel: 'Später B', von: isoPlusTage(h, 20), vorlauf: 3 },
+        { id: 'c', titel: 'Ohne C', von: isoPlusTage(h, 1), vorlauf: null },
+        { id: 'd', titel: 'Vorbei D', von: isoPlusTage(h, -10), bis: isoPlusTage(h, -8), vorlauf: 7 }
+      ];
+      try { localStorage.removeItem('br-erinnerungen-gelesen'); } catch (e) {}
+      glockeAktualisieren();
+    })()
+  `);
+  const zahl = () => sm.evaluate('document.getElementById("glockeZahl").hidden ? "" : document.getElementById("glockeZahl").textContent');
+  const klick = sel => sm.evaluate('document.querySelector(' + JSON.stringify(sel) + ').click()');
+  assert.strictEqual(await zahl(), '1', 'Zähler zeigt einen fälligen Termin');
+  assert.ok(/1 ungelesen/.test(await sm.getAttribute('#btnGlocke', 'aria-label')), 'aria-label nennt die Zahl');
+
+  await sm.evaluate('zeigeErinnerungsListe()');
+  const liste = await sm.textContent('#erinnerungListe');
+  assert.ok(/Frist A/.test(await sm.textContent('#erinnerungListe [data-abschnitt="faellig"]')), 'A unter Fällig');
+  const dem = await sm.textContent('#erinnerungListe [data-abschnitt="demnaechst"]');
+  assert.ok(/Später B/.test(dem) && /Ohne C/.test(dem), 'B und C unter Demnächst');
+  assert.ok(!/Vorbei D/.test(liste), 'D nirgends');
+  await klick('#erinnerungListe [data-gelesen="a"]');
+  assert.strictEqual(await zahl(), '', 'gelesen → Zähler weg');
+  assert.ok(/Frist A/.test(await sm.textContent('#erinnerungListe [data-abschnitt="faellig"]')), 'A bleibt sichtbar');
+  assert.ok(await sm.$('#erinnerungListe .erinnerung-gelesen'), 'A ausgegraut');
+  assert.ok((await sm.evaluate('localStorage.getItem("br-erinnerungen-gelesen")')).includes('a|'), 'Schlüssel im localStorage');
+  assert.ok(await sm.evaluate('!JSON.stringify(daten).includes("br-erinnerungen")'), 'nie in daten');
+
+  /* Klick auf Eintrag springt in den Kalender */
+  await klick('#erinnerungListe [data-oeffne="b"]');
+  assert.strictEqual(await sm.evaluate('ui.ansicht + "|" + ui.urlaubMonat'), 'urlaub|' + await sm.evaluate('isoPlusTage(heuteIso(), 20).slice(0, 7)'), 'Sprung in den Kalender');
+  assert.ok(!(await sm.evaluate('document.getElementById("erinnerungListe").open')), 'Liste geschlossen');
+
+  /* anderer Vorlauf → anderer Schlüssel → wieder ungelesen */
+  await sm.evaluate(`daten.termine.find(t => t.id === 'a').vorlauf = 3; daten.termine.find(t => t.id === 'a').von = isoPlusTage(heuteIso(), 1); glockeAktualisieren();`);
+  assert.strictEqual(await zahl(), '1', 'Vorlauf geändert → wieder ungelesen');
+
+  /* localStorage wirft → kein Absturz, alles ungelesen */
+  await sm.evaluate(`Storage.prototype.getItem = () => { throw new Error('gesperrt'); }; Storage.prototype.setItem = () => { throw new Error('gesperrt'); };`);
+  await sm.evaluate('glockeAktualisieren()');
+  assert.strictEqual(await zahl(), '1', 'localStorage wirft → ungelesen');
+  await sm.evaluate('zeigeErinnerungsListe(); document.querySelector("#erinnerungListe [data-gelesen]").click()');
+  await sm.reload();
+  await sm.waitForFunction('typeof APP_MODUS !== "undefined"', null, { timeout: 5000 });
+
+  /* Viewer: Glocke da, Gelesen-Markieren geht */
+  await sm.evaluate(`
+    (() => {
+      ${AUFBAU}
+      sitzungsRolle = 'viewer';
+      daten.termine = [{ id: 'v', titel: 'Frist V', von: isoPlusTage(heuteIso(), 1), vorlauf: 3 }];
+      try { localStorage.removeItem('br-erinnerungen-gelesen'); } catch (e) {}
+      glockeAktualisieren(); zeigeErinnerungsListe();
+    })()
+  `);
+  assert.ok(await sm.isVisible('#btnGlocke'), 'Glocke für Viewer sichtbar');
+  await klick('#erinnerungListe [data-gelesen="v"]');
+  assert.strictEqual(await zahl(), '', 'Viewer kann als gelesen markieren');
+
+  /* Echter Login mit fälligem Termin */
+  const heute = new Date();
+  const iso = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  const zusatz = { termine: [{ id: 'f1', titel: 'Kündigung Müller', von: iso(new Date(heute.getTime() + 2 * 86400000)), vorlauf: 7, notiz: 'Frist <b>prüfen</b>' }] };
+  const oeffnen = async kontext => {
+    const s = await kontext.newPage();
+    s.on('pageerror', e => fehler.push('pageerror: ' + e.message));
+    await s.goto(DATEI('BR-Sitzungsmanager.html'));
+    await s.waitForFunction('typeof APP_MODUS !== "undefined" && !!Speicher.db', null, { timeout: 5000 });
+    return s;
+  };
+  const hinweisOffen = s => s.evaluate('!!document.querySelector("#loginErinnerungen[open]")');
+  const seite = await oeffnen(await kontextMitZugang(browser));
+  const datei = await testSicherung(seite, { zusatz });
+  await anmeldenPerDatei(seite, datei);
+  assert.ok(await hinweisOffen(seite), 'Login zeigt Erinnerungshinweis');
+  assert.ok(/Kündigung Müller/.test(await seite.textContent('#loginErinnerungen')) && !(await seite.$('#loginErinnerungen b')), 'Titel da, Notiz maskiert');
+  await seite.evaluate('document.querySelector("#loginErinnerungen [data-spaeter]").click()');
+  assert.ok(!(await hinweisOffen(seite)), '„Später" schließt');
+  await seite.reload();
+  await seite.waitForFunction('typeof daten !== "undefined" && daten && Array.isArray(daten.termine)', null, { timeout: 15000 });
+  await seite.waitForTimeout(300);
+  assert.ok(!(await hinweisOffen(seite)), 'Fortsetzen nach Neuladen zeigt keinen Hinweis');
+
+  const seite2 = await oeffnen(await kontextMitZugang(browser));
+  await anmeldenPerDatei(seite2, await testSicherung(seite2, { zusatz }));
+  assert.ok(await hinweisOffen(seite2), 'zweiter Kontext: Hinweis');
+  await seite2.evaluate('document.querySelector("#loginErinnerungen [data-alle]").click()');
+  assert.ok(!(await hinweisOffen(seite2)), '„Alle gelesen" schließt');
+  await seite2.evaluate('sperren()');
+  await anmeldenPerDatei(seite2, await testSicherung(seite2, { zusatz }));
+  assert.ok(!(await hinweisOffen(seite2)), 'nach „Alle gelesen" kein Hinweis mehr');
+  assert.strictEqual(await seite2.evaluate('document.getElementById("glockeZahl").hidden'), true, 'Glocke ohne Zähler');
+
+  assert.deepStrictEqual(fehler, [], 'keine Laufzeitfehler');
+  await browser.close();
+  console.log('OK  Erinnerungen: Glocke, gelesen pro Browser, Login-Hinweis nur nach Anmeldung');
+}
+
 /* Kalender: eigene Termine im Monatsraster und in der Liste; Dialog zum Anlegen, Bearbeiten, Löschen; Viewer nur lesend. */
 async function pruefeKalenderTermine() {
   const browser = await chromium.launch();
@@ -3250,6 +3360,7 @@ async function pruefeEdgeWarnung() {
   await pruefeEchtePersistenz();
   await pruefeTerminePersistenz();
   await pruefeKalenderTermine();
+  await pruefeErinnerungen();
   await pruefeEinSchreibenderTab();
   console.log('\nAlle Browser-Prüfungen bestanden.');
 })().catch(e => { console.error(e); process.exit(1); });
