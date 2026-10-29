@@ -2961,6 +2961,100 @@ async function pruefeKalenderTermine() {
   console.log('OK  Kalender: Termine anlegen, bearbeiten, löschen; Viewer nur lesend');
 }
 
+/* Kalender/Erinnerungen: Randfälle (Dialog-Hinweise, Lese-Tab, Speicherfehler, Gelesen-Schlüssel, aufgeschobener Login-Hinweis). */
+async function pruefeKalenderRandfaelle() {
+  const browser = await chromium.launch();
+  const fehler = [];
+  const sm = await browser.newPage();
+  sm.on('pageerror', e => fehler.push(e.message));
+  await sm.goto(DATEI('BR-Sitzungsmanager.html'));
+  await sm.waitForFunction('typeof APP_MODUS !== "undefined"', null, { timeout: 5000 });
+  await sm.evaluate(`
+    (() => {
+      ${AUFBAU}
+      const h = heuteIso();
+      window.__von = isoPlusTage(h, 10);
+      daten.termine = [{ id: 'a', titel: 'Frist A', von: isoPlusTage(h, 2), vorlauf: 7 }];
+      try { localStorage.removeItem('br-erinnerungen-gelesen'); } catch (e) {}
+      ui.ansicht = 'urlaub'; ui.urlaubMonat = h.slice(0, 7); renderHaupt(); glockeAktualisieren();
+    })()
+  `);
+  const klick = sel => sm.evaluate('document.querySelector(' + JSON.stringify(sel) + ').click()');
+  const zahl = () => sm.evaluate('document.getElementById("glockeZahl").hidden ? "" : document.getElementById("glockeZahl").textContent');
+  const termine = () => sm.evaluate('JSON.stringify(daten.termine)');
+  const vorher = await termine();
+
+  /* Dialog-Hinweise; Termine bleiben unverändert */
+  const versuch = async (titel, von, bis) => {
+    await sm.evaluate('terminDialog(null)');
+    await sm.evaluate(`(() => {
+      const d = document.getElementById('terminDialog'), f = n => d.querySelector('[data-f="' + n + '"]');
+      f('titel').value = ${JSON.stringify(titel)}; f('von').value = ${JSON.stringify(von)}; f('bis').value = ${JSON.stringify(bis)};
+      d.querySelector('#terminSpeichern').click();
+    })()`);
+    const text = await sm.textContent('#terminHinweis', { timeout: 5000 });
+    assert.ok(await sm.isVisible('#terminDialog'), 'Dialog bleibt offen');
+    assert.strictEqual(await termine(), vorher, 'Termine unverändert');
+    await sm.evaluate(`document.getElementById('terminDialog').close()`);
+    return text;
+  };
+  const von = await sm.evaluate('window.__von');
+  assert.strictEqual(await versuch('', von, ''), 'Titel und Beginn sind Pflicht.', 'Hinweis bei leerem Titel');
+  assert.strictEqual(await versuch('X', '', ''), 'Titel und Beginn sind Pflicht.', 'Hinweis bei leerem Beginn');
+  assert.strictEqual(await versuch('X', von, await sm.evaluate('isoPlusTage(window.__von, -1)')), 'Das Ende liegt vor dem Beginn.', 'Hinweis bei Ende vor Beginn');
+
+  /* Gelesen-Schlüssel hängt allein am Vorlauf */
+  await sm.evaluate('zeigeErinnerungsListe()');
+  await klick('#erinnerungListe [data-gelesen="a"]');
+  assert.strictEqual(await zahl(), '', 'gelesen');
+  await sm.evaluate(`document.getElementById('erinnerungListe').close(); daten.termine[0].vorlauf = 3; glockeAktualisieren();`);
+  assert.strictEqual(await zahl(), '1', 'nur Vorlauf geändert → wieder ungelesen');
+
+  /* Speicher wirft: „Gelesen" wird nicht dauerhaft gemerkt, „Ungelesen" zeigt 1 */
+  await sm.evaluate(`window.__si = Storage.prototype.setItem; window.__ri = Storage.prototype.removeItem;
+    Storage.prototype.setItem = () => { throw new Error('voll'); }; Storage.prototype.removeItem = () => { throw new Error('voll'); };
+    zeigeErinnerungsListe();`);
+  await klick('#erinnerungListe [data-gelesen="a"]');
+  assert.strictEqual(await zahl(), '1', 'Gelesen bei kaputtem Speicher wird nicht übernommen');
+  assert.ok(!String(await sm.evaluate('localStorage.getItem("br-erinnerungen-gelesen")')).includes('a|'), 'kein Gelesen-Schlüssel gespeichert');
+  await sm.evaluate(`Storage.prototype.setItem = window.__si; Storage.prototype.removeItem = window.__ri; document.getElementById('erinnerungListe').close();`);
+
+  /* Lese-Tab (anderer Tab schreibt): keine Knöpfe, Dialog ändert nichts */
+  const r = await sm.evaluate(`(() => {
+    nurLesendWeilAndererTab = true; renderHaupt();
+    const c = document.getElementById('hauptInhalt');
+    const knoepfe = !!c.querySelector('#kalTerminNeu') || !!c.querySelector('#kalMeldungen');
+    const vor = JSON.stringify(daten.termine);
+    terminDialog(null);
+    let d = document.getElementById('terminDialog'), f = n => d.querySelector('[data-f="' + n + '"]');
+    f('titel').value = 'Neu'; f('von').value = window.__von; d.querySelector('#terminSpeichern').click();
+    terminDialog('a');
+    const l = document.querySelector('#terminDialog #terminLoeschen'); if (l) l.click();
+    const ok = document.querySelector('#dlgBestaetigen #bstOk'); if (ok && document.getElementById('dlgBestaetigen').open) ok.click();
+    const ergebnis = { knoepfe, gleich: JSON.stringify(daten.termine) === vor };
+    nurLesendWeilAndererTab = false;
+    return ergebnis;
+  })()`);
+  assert.strictEqual(r.knoepfe, false, 'Lese-Tab: keine Termin-/Meldungsknöpfe');
+  assert.strictEqual(r.gleich, true, 'Lese-Tab: Speichern/Löschen ändert nichts');
+  await sm.evaluate(`document.getElementById('terminDialog').close()`);
+
+  /* Login-Hinweis wartet, bis ein anderer Dialog geschlossen ist */
+  await sm.evaluate(`
+    daten.termine[0].vorlauf = 7; try { localStorage.removeItem('br-erinnerungen-gelesen'); } catch (e) {}
+    bestaetigen('Test', 'Offen', () => {}, 'OK');
+    zeigeLoginErinnerungen();
+  `);
+  assert.ok(await sm.evaluate('document.getElementById("dlgBestaetigen").open'), 'anderer Dialog offen');
+  assert.ok(!(await sm.evaluate('!!document.querySelector("#loginErinnerungen[open]")')), 'Hinweis noch nicht offen');
+  await sm.evaluate('document.getElementById("dlgBestaetigen").close()');
+  await sm.waitForFunction('!!document.querySelector("#loginErinnerungen[open]")', null, { timeout: 5000 });
+
+  assert.deepStrictEqual(fehler, [], 'keine Laufzeitfehler');
+  await browser.close();
+  console.log('OK  Kalender/Erinnerungen: Randfälle (Hinweise, Lese-Tab, Speicherfehler, Schlüssel, Login-Aufschub)');
+}
+
 /* Nur ein Tab schreibt (Web Lock je Datenbank); Reload/Ausblenden verliert keine Änderung. */
 async function pruefeEinSchreibenderTab() {
   const browser = await chromium.launch();
@@ -3407,6 +3501,7 @@ async function pruefeEdgeWarnung() {
   await pruefeTerminePersistenz();
   await pruefeKalenderTermine();
   await pruefeErinnerungen();
+  await pruefeKalenderRandfaelle();
   await pruefeEinSchreibenderTab();
   console.log('\nAlle Browser-Prüfungen bestanden.');
 })().catch(e => { console.error(e); process.exit(1); });

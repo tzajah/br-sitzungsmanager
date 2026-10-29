@@ -413,6 +413,24 @@ const tag4 = kal.wochen.flat().find(t => t.iso === '2026-11-04');
 assert.deepStrictEqual(tag4.termine.map(t => t.id), ['d']);
 assert.deepStrictEqual(roh(k.leeresProjekt().termine), []);
 console.log('OK  Termine: Normalisierung, Fälligkeit, Gelesen-Schlüssel, Kalendertage');
+/* Termine (Kern): Randfälle – 30-Tage-Grenze, bis-Rückfall, Schaltjahr */
+{
+const k = kernLaden(undefined, []);
+const heute = '2026-11-06';
+const t = roh(k.terminNormieren([
+  { id: 'g30', titel: 'Tag 30', von: k.isoPlusTage(heute, 30), vorlauf: null },
+  { id: 'g31', titel: 'Tag 31', von: k.isoPlusTage(heute, 31), vorlauf: null }
+]));
+assert.deepStrictEqual(roh(k.erinnerungen(t, heute, new Set())).demnaechst.map(x => x.id), ['g30'], 'Tag 30 demnächst, Tag 31 nicht');
+const [ohneBis] = roh(k.terminNormieren([{ id: 'o', titel: 'Ohne bis', von: '2026-11-10' }]));
+assert.strictEqual(ohneBis.bis, '2026-11-10', 'fehlendes bis → von');
+assert.strictEqual(ohneBis.vorlauf, 7, 'fehlender Vorlauf → 7');
+assert.deepStrictEqual(roh(k.terminNormieren([
+  { id: 'a', titel: 'Schaltjahr', von: '2028-02-29' },
+  { id: 'b', titel: 'Kein Schaltjahr', von: '2027-02-29' }
+])).map(x => x.id), ['a'], '29.02.2028 gültig, 29.02.2027 nicht');
+}
+console.log('OK  Termine: 30-Tage-Grenze, bis-Rückfall, Schaltjahr');
 }
 
 /* Persistenz (br-app.js): Schreibreihenfolge, Schließen erst nach dem Speichern, Import atomar. IndexedDB ist durch einen Speicher-Stub ersetzt. */
