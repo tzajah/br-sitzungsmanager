@@ -79,9 +79,9 @@
   <div class="innen" style="max-width:760px;margin:0 auto">
     <div class="ueberzeile">Betriebsrat</div>
     <h1>Abwesenheiten melden</h1>
-    <p>Trage deine Urlaubs- und Abwesenheitszeiten ein und schicke die erzeugte Datei
-      an die Sitzungsleitung. Sie liest die Meldungen in den Sitzungsmanager ein, damit
-      Sitzungstermine nicht in deine Abwesenheit fallen.</p>
+    <p>Trage deine Urlaubs- und Abwesenheitszeiten ein und lege die erzeugte Datei auf dem
+      BR-Laufwerk ab. Mitglieder mit Schreibzugriff lesen die Meldungen in den Kalender des
+      Sitzungsmanagers ein, damit Sitzungstermine nicht in deine Abwesenheit fallen.</p>
     <div class="kante"></div>
   </div>
 </header>
@@ -118,8 +118,8 @@
       </div>
       <div class="meldung" id="meldung"></div>
       <div class="hinweis" style="margin-bottom:0">
-        <b>Und dann?</b> Die gespeicherte Datei per Mail oder über das BR-Laufwerk an die
-        Sitzungsleitung geben. Ändert sich etwas, einfach die frühere Meldung hier öffnen,
+        <b>Und dann?</b> Die gespeicherte Datei auf dem BR-Laufwerk ablegen (oder per Mail
+        weitergeben). Ändert sich etwas, einfach die frühere Meldung hier öffnen,
         anpassen und neu speichern – die neue Meldung ersetzt die alte vollständig.
       </div>
       <div class="hinweis warnung" style="margin-bottom:0">
@@ -137,7 +137,7 @@
 <script>
 'use strict';
 /* Bewusst ohne Passwort/Verschlüsselung, damit die Meldehürde niedrig bleibt. Format 'urlaub-v1',
-   eingelesen im Sitzungsmanager unter „Gremium & Mitglieder" → „Urlaubskalender" → „Meldungen einlesen …". */
+   eingelesen im Sitzungsmanager unter „Kalender" → „Meldungen einlesen …" (Arbeitsmodus) oder im Admin-Menü → „Urlaub". */
 
 const el = id => document.getElementById(id);
 const NAME_MERKER = 'br-urlaub-melden.name';
@@ -240,7 +240,7 @@ el('speichern').onclick = () => {
   sagen('„' + dateiname + '" gespeichert' +
     (gueltig.length ? ' – ' + gueltig.length + ' Zeitraum/Zeiträume' : ' – ohne Abwesenheit') +
     (verworfen ? '. ' + verworfen + ' unvollständige Zeile(n) wurden nicht übernommen' : '') +
-    '. Bitte an die Sitzungsleitung geben.', true);
+    '. Bitte auf dem BR-Laufwerk ablegen.', true);
 };
 
 el('laden').onclick = () => el('datei').click();

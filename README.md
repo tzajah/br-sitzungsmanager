@@ -115,7 +115,7 @@ Anwesenheitsliste, Niederschrift) nach den einschlägigen Vorschriften des BetrV
   werden Formulierungen zu §§ 37, 80, 87, 99 und 102 BetrVG.
 - **Kalender** im Sitzungsmanager (Seitenleiste „Kalender“): Monatsraster und Liste, in
   denen Abwesenheiten, Sitzungstermine und **eigene Termine** im selben Blick liegen –
-  Terminkollisionen sieht man sofort. Termine (Titel, Zeitraum, Notiz) legt an, wer
+  Terminkollisionen sieht man sofort. Termine (Titel, Zeitraum, Uhrzeit, Notiz) legt an, wer
   schreiben darf (Arbeitsmodus); sie liegen in der verschlüsselten Sicherungsdatei und sind
   für alle sichtbar. Abwesenheiten werden im Admin-Menü unter „Urlaub“ gepflegt: Name (mit
   Vorschlägen aus den Stammdaten), Zeitraum und Grund. Im Reiter „Sitzung“ warnt die App
@@ -133,9 +133,9 @@ Anwesenheitsliste, Niederschrift) nach den einschlägigen Vorschriften des BetrV
   nur bei geöffneter App – es gibt keine Benachrichtigung von außen.
 - **Die Mitglieder melden selbst**: `br-urlaub-melden.html` ist eine eigenständige Seite
   **ohne Passwort**. Name eintragen, Zeiträume erfassen, speichern – die erzeugte
-  JSON-Datei geht an die Sitzungsleitung, die sie im Kalender oder im Admin-Menü über
-  „Meldungen einlesen …“ übernimmt (mehrere auf einmal möglich; im Kalender nach Eingabe
-  des Arbeits-Passworts). Eine Meldung ist für ihre Person maßgeblich: Deren Zeiträume
+  JSON-Datei legt das Mitglied auf dem BR-Laufwerk ab. Wer mit dem Arbeits-Passwort
+  angemeldet ist, übernimmt sie im Kalender (oder im Admin-Menü) über „Meldungen
+  einlesen …“; mehrere auf einmal sind möglich. Eine Meldung ist für ihre Person maßgeblich: Deren Zeiträume
   werden ersetzt, alle anderen bleiben unangetastet.
   Wie überall gilt: Es bearbeitet immer nur eine Person gleichzeitig (siehe „Kein
   gleichzeitiges Bearbeiten“ unten) – sonst gehen Termine beim Sichern verloren.
@@ -244,8 +244,8 @@ Ablage. Wichtig: Der Unterordner `scripts/` muss mitkopiert werden – die HTML-
 laden von dort. Fehlt eines der fünf Code-Module, startet die App nicht; fehlt
 `scripts/br-zugang.js`, ist sie gesperrt. Fehlen `br-design.css`,
 `scripts/pdf-lib.min.js`, `scripts/standard-tops.js`, `scripts/category.js`,
-`scripts/protokoll_vorlagen.js`, `scripts/beschluss_vorlagen.js`, läuft die App weiter – es fehlen dann Erscheinungsbild
-(Kern-Fallback + Hinweis), PDF-Erzeugung, Standard-TOPs, Kategorien, Textbausteine.
+`scripts/protokoll_vorlagen.js` oder `scripts/beschluss_vorlagen.js`, läuft die App
+weiter – es fehlen dann Erscheinungsbild (Kern-Fallback + Hinweis), PDF-Erzeugung, Standard-TOPs, Kategorien, Textbausteine.
 
 Alle Dateien, die die App zum Herunterladen anbietet – `standard-tops.js`,
 `category.js`, `protokoll_vorlagen.js`, `beschluss_vorlagen.js`,
@@ -373,7 +373,7 @@ und -fassung, Niederschrift); Geheimhaltung nach § 79 BetrVG.
 | `br-verschluesselung-generator.html` | Werkzeug für die Erstinbetriebnahme: erzeugt `br-zugang.js` sowie die leeren Start-Speicherstände beider Module, alle aus einem Hauptschlüssel |
 | `br-sicherung-teilen.html` | Werkzeug zur einmaligen Umstellung: teilt eine vorhandene Sicherung in je eine Startdatei für Sitzungsmanager und Protokollmodul |
 | `br-anlagen-entfernen.html` | Werkzeug zum Aufräumen: entfernt gespeicherte Anlagen-Dateien aus einer Sicherung oder aus der Browser-Ablage des Protokollmoduls; die Verweise bleiben erhalten |
-| `br-urlaub-melden.html` | Werkzeug für die Mitglieder: eigene Abwesenheiten erfassen und als JSON-Datei an die Sitzungsleitung geben. Ohne Passwort, läuft allein – kann auch einzeln weitergegeben werden |
+| `br-urlaub-melden.html` | Werkzeug für die Mitglieder: eigene Abwesenheiten erfassen und als JSON-Datei auf dem BR-Laufwerk ablegen. Ohne Passwort, läuft allein – kann auch einzeln weitergegeben werden |
 | `CHANGELOG.md` | Änderungshistorie |
 
 ## Entwicklung & Tests

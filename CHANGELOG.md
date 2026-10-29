@@ -18,8 +18,10 @@ veröffentlichten Releases).
   Standard 1 Woche). Fällige Termine zeigt die Glocke in der Seitenleiste; nach „Datei
   laden“ und Passwort erscheint ein Hinweis. „Gelesen“ gilt pro Browser. Erinnert wird nur
   bei geöffneter App.
-- **Meldungen einlesen direkt im Kalender.** Mit dem Arbeits-Passwort, ohne Umweg über das
-  Admin-Menü (dort weiterhin möglich).
+- **Meldungen einlesen direkt im Kalender.** Wer mit dem Arbeits-Passwort angemeldet ist,
+  liest die Urlaubsmeldungen der Mitglieder ohne Umweg über das Admin-Menü ein (dort
+  weiterhin möglich). `br-urlaub-melden.html` bittet entsprechend darum, die Meldung auf dem
+  BR-Laufwerk abzulegen, statt sie an die Sitzungsleitung zu geben.
 
 ### Entfernt
 - **`scripts/urlaub.js`** (und `urlaub.beispiel.js`). Urlaube stehen nur noch in der
