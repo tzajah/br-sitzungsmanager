@@ -2829,6 +2829,21 @@ async function pruefeErinnerungen() {
   assert.ok(!(await hinweisOffen(seite2)), 'nach „Alle gelesen" kein Hinweis mehr');
   assert.strictEqual(await seite2.evaluate('document.getElementById("glockeZahl").hidden'), true, 'Glocke ohne Zähler');
 
+  /* Seite bleibt über Mitternacht offen: Zähler und Kalender ziehen ohne Nutzeraktion nach. */
+  const ctx = await kontextMitZugang(browser);
+  await ctx.clock.install({ time: new Date(2026, 10, 10, 23, 58, 0) });
+  const nacht = await oeffnen(ctx);
+  const nachtZusatz = { termine: [{ id: 'n1', titel: 'Frist Nacht', von: '2026-11-14', vorlauf: 3 }] };
+  await anmeldenPerDatei(nacht, await testSicherung(nacht, { zusatz: nachtZusatz }));
+  await nacht.evaluate('document.querySelector("#loginErinnerungen") && document.querySelector("#loginErinnerungen").close()');
+  const nachtZahl = () => nacht.evaluate('document.getElementById("glockeZahl").hidden ? "" : document.getElementById("glockeZahl").textContent');
+  assert.strictEqual(await nachtZahl(), '', 'vor Mitternacht noch nicht fällig');
+  await nacht.evaluate('ui.ansicht = "urlaub"; ui.urlaubMonat = "2026-11"; renderHaupt();');
+  assert.strictEqual(await nacht.textContent('.kal-tag.heute .kal-zahl'), '10', 'Kalender: heute = 10.');
+  await ctx.clock.runFor(4 * 60 * 1000);
+  assert.strictEqual(await nachtZahl(), '1', 'nach Mitternacht ohne Aktion fällig');
+  assert.strictEqual(await nacht.textContent('.kal-tag.heute .kal-zahl'), '11', 'Kalender setzt "heute" auf den neuen Tag');
+
   assert.deepStrictEqual(fehler, [], 'keine Laufzeitfehler');
   await browser.close();
   console.log('OK  Erinnerungen: Glocke, gelesen pro Browser, Login-Hinweis nur nach Anmeldung');

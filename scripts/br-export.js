@@ -1562,6 +1562,19 @@ function verkabeln() {
   });
 }
 
+/* Seite bleibt über Mitternacht offen: Glocke und Kalender ziehen beim Tageswechsel nach (nur diese beiden, damit Eingaben nicht gestört werden). */
+let tagBeobachtet = null;
+function tageswechselBeobachten() {
+  if (tagBeobachtet) return;
+  tagBeobachtet = heuteIso();
+  setInterval(() => {
+    const h = heuteIso();
+    if (h === tagBeobachtet) return;
+    tagBeobachtet = h;
+    glockeAktualisieren();
+    if (ui.ansicht === 'urlaub') renderHaupt();
+  }, 60000);
+}
 async function appStarten(frischAngemeldet) {
   await schreibRechtPruefen();
   /* Reihenfolge bewusst: externe Dateien haben Vorrang, „Gremium" kommt zuletzt und überschreibt die Einzeldateien. */
@@ -1602,6 +1615,7 @@ async function appStarten(frischAngemeldet) {
   setAutosaveInfo(startLabel);
   aktualisiereSicherungInfo();
   glockeAktualisieren();
+  tageswechselBeobachten();
   if (frischAngemeldet && modusHatAnsicht('urlaub')) zeigeLoginErinnerungen();
 }
 
