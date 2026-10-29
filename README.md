@@ -22,7 +22,7 @@ Anwesenheitsliste, Niederschrift) nach den einschlägigen Vorschriften des BetrV
     br-kern.js  br-app.js  br-tagesordnung.js  br-protokoll.js  br-export.js
     pdf-lib.min.js
     standard-tops.js  category.js  protokoll_vorlagen.js
-    beschluss_vorlagen.js  urlaub.js
+    beschluss_vorlagen.js
     br-zugang.js  Gremium
   ```
 
@@ -113,22 +113,32 @@ Anwesenheitsliste, Niederschrift) nach den einschlägigen Vorschriften des BetrV
   (im Ordner `scripts`), im Admin-Menü unter „Textbausteine" editierbar; im Protokoll je
   Beschluss über „+ Textblock einfügen" in den **Wortlaut** übernehmbar. Ausgeliefert
   werden Formulierungen zu §§ 37, 80, 87, 99 und 102 BetrVG.
-- **Urlaubs-/Abwesenheitskalender**, im Admin-Menü des Sitzungsmanagers
-  unter „Urlaub" gepflegt: Name (mit Vorschlägen aus den Stammdaten), Zeitraum und Grund. Im Reiter
-  „Sitzung" warnt die App beim gewählten Datum, wer fehlt; im Protokoll werden diese
-  Mitglieder als „Entschuldigt" **vorbelegt**, solange noch kein Status erfasst ist –
-  bereits erfasste Angaben bleiben unberührt. Namen ohne Zuordnung in den Stammdaten
-  werden gemeldet, „Vergangene aufräumen" entfernt abgelaufene Zeiträume. Wer den
-  Kalender lieber zentral pflegt, legt `urlaub.js` in den Ordner `scripts` – die Datei hat
-  dann beim Öffnen Vorrang und lässt sich aus der App heraus erzeugen.
+- **Kalender** im Sitzungsmanager (Seitenleiste „Kalender“): Monatsraster und Liste, in
+  denen Abwesenheiten, Sitzungstermine und **eigene Termine** im selben Blick liegen –
+  Terminkollisionen sieht man sofort. Termine (Titel, Zeitraum, Notiz) legt an, wer
+  schreiben darf (Arbeitsmodus); sie liegen in der verschlüsselten Sicherungsdatei und sind
+  für alle sichtbar. Abwesenheiten werden im Admin-Menü unter „Urlaub“ gepflegt: Name (mit
+  Vorschlägen aus den Stammdaten), Zeitraum und Grund. Im Reiter „Sitzung“ warnt die App
+  beim gewählten Datum, wer fehlt; im Protokoll werden diese Mitglieder als „Entschuldigt“
+  **vorbelegt**, solange noch kein Status erfasst ist – bereits erfasste Angaben bleiben
+  unberührt. Die Urlaube reisen über die Datei `Gremium` ins Protokollmodul; eine eigene
+  Urlaubsdatei gibt es nicht mehr. Namen ohne Zuordnung in den Stammdaten werden gemeldet,
+  „Vergangene aufräumen“ entfernt abgelaufene Zeiträume.
+- **Erinnerungen:** Je Termin lässt sich ein Vorlauf wählen (keine Erinnerung, am selben
+  Tag, 1 Tag, 3 Tage, 1 Woche – Standard –, 2 Wochen vorher). Fällige Termine zeigt die
+  **Glocke** in der Kopfzeile der Seitenleiste des Sitzungsmanagers mit Zähler; die Liste
+  trennt „Fällig“ und „Demnächst“ (die nächsten 30 Tage). Nach „Datei laden“ und Passwort
+  weist ein Hinweis auf fällige Erinnerungen hin (nicht beim bloßen Neuladen der Seite).
+  „Gelesen“ gilt **pro Browser** und wird nicht in der Sicherung gespeichert. Erinnert wird
+  nur bei geöffneter App – es gibt keine Benachrichtigung von außen.
 - **Die Mitglieder melden selbst**: `br-urlaub-melden.html` ist eine eigenständige Seite
   **ohne Passwort**. Name eintragen, Zeiträume erfassen, speichern – die erzeugte
-  JSON-Datei geht an die Sitzungsleitung, die sie über „Meldungen einlesen …"
-  übernimmt (mehrere auf einmal möglich). Eine Meldung ist für ihre Person maßgeblich:
-  Deren Zeiträume werden ersetzt, alle anderen bleiben unangetastet.
-- **Kalenderansicht „Urlaub"** im Sitzungsmanager: Monatsraster, in dem Abwesenheiten
-  und Sitzungstermine im selben Blick liegen – Terminkollisionen sieht man sofort.
-  Monatsweise blätterbar, darunter die kommenden Abwesenheiten mit Tagesanzahl.
+  JSON-Datei geht an die Sitzungsleitung, die sie im Kalender oder im Admin-Menü über
+  „Meldungen einlesen …“ übernimmt (mehrere auf einmal möglich; im Kalender nach Eingabe
+  des Arbeits-Passworts). Eine Meldung ist für ihre Person maßgeblich: Deren Zeiträume
+  werden ersetzt, alle anderen bleiben unangetastet.
+  Wie überall gilt: Es bearbeitet immer nur eine Person gleichzeitig (siehe „Kein
+  gleichzeitiges Bearbeiten“ unten) – sonst gehen Termine beim Sichern verloren.
 - **Sitzungsstand** im Protokollmodul: Beschlussfähigkeit, protokollierte Punkte mit
   Fortschrittsleiste, Zahl der Beschlüsse, Aufgaben und Gäste sowie ein Hinweis,
   solange eine Sitzungspause läuft – dauerhaft in der Seitenleiste sichtbar. Die
@@ -208,7 +218,7 @@ Anwesenheitsliste, Niederschrift) nach den einschlägigen Vorschriften des BetrV
 | Rolle | Rechte |
 |-------|--------|
 | **Viewer** (Standard) | Ansehen, Navigieren, Filtern, PDF-/CSV-Export, Sicherung erstellen – **kein** Bearbeiten |
-| **Arbeitsmodus** | Sitzungen, Tagesordnung, Protokoll, Beschlüsse, Teilnahme/Gäste, Dokumente, Sicherung öffnen/erstellen |
+| **Arbeitsmodus** | Sitzungen, Tagesordnung, Protokoll, Beschlüsse, Teilnahme/Gäste, Dokumente, Kalendertermine, Urlaubsmeldungen einlesen, Sicherung öffnen/erstellen |
 | **Debug-Mode** | zusätzlich Gremium/Mitglieder, Personen & Rollen, Standard-TOPs, Kategorien, Textbausteine, Tags, Passwörter ändern, zurücksetzen |
 
 Das eingegebene Passwort bestimmt die Rolle. Alle drei Passwörter gelten
@@ -234,13 +244,11 @@ Ablage. Wichtig: Der Unterordner `scripts/` muss mitkopiert werden – die HTML-
 laden von dort. Fehlt eines der fünf Code-Module, startet die App nicht; fehlt
 `scripts/br-zugang.js`, ist sie gesperrt. Fehlen `br-design.css`,
 `scripts/pdf-lib.min.js`, `scripts/standard-tops.js`, `scripts/category.js`,
-`scripts/protokoll_vorlagen.js`, `scripts/beschluss_vorlagen.js` oder
-`scripts/urlaub.js`, läuft die App weiter – es fehlen dann Erscheinungsbild
-(Kern-Fallback + Hinweis), PDF-Erzeugung, Standard-TOPs, Kategorien, Textbausteine
-bzw. der Urlaubskalender.
+`scripts/protokoll_vorlagen.js`, `scripts/beschluss_vorlagen.js`, läuft die App weiter – es fehlen dann Erscheinungsbild
+(Kern-Fallback + Hinweis), PDF-Erzeugung, Standard-TOPs, Kategorien, Textbausteine.
 
 Alle Dateien, die die App zum Herunterladen anbietet – `standard-tops.js`,
-`category.js`, `protokoll_vorlagen.js`, `beschluss_vorlagen.js`, `urlaub.js`,
+`category.js`, `protokoll_vorlagen.js`, `beschluss_vorlagen.js`,
 `br-zugang.js` und `Gremium` – gehören nach `scripts/`. Sicherungen
 (`.brenc.json`) und Übergabedateien (`.brto.json`, `.brerg.json`) **nicht**: Die
 liegen dort, wo ihr sie ablegt.
@@ -254,7 +262,7 @@ nicht im Bestand der Sitzungsleitung und umgekehrt. Der Austausch läuft bewusst
 Dateien:
 
 - **Datei `Gremium`** (Stammdaten): Alles aus dem Admin-Menü – Stammdaten,
-  Personen, Kategorien, Standard-TOPs, Textbausteine, Schlagworte, Urlaubskalender –
+  Personen, Kategorien, Standard-TOPs, Textbausteine, Schlagworte, Urlaube –
   sowie die **Exporteinstellungen** wird im Sitzungsmanager gepflegt und dort über
   **„Gremium-Datei erzeugen"** verschlüsselt abgelegt. Die Datei liegt neben beiden
   HTML-Dateien; das Protokollmodul übernimmt sie beim Öffnen **automatisch** und zeigt
@@ -358,7 +366,6 @@ und -fassung, Niederschrift); Geheimhaltung nach § 79 BetrVG.
 | `scripts/category.js` | Kategorien der Tagesordnungspunkte |
 | `scripts/protokoll_vorlagen.js` | Textbausteine für die Protokollerstellung |
 | `scripts/beschluss_vorlagen.js` | Textbausteine für den Wortlaut von Beschlüssen |
-| `scripts/urlaub.js` | Urlaubs-/Abwesenheitskalender, nur lesend. Mit echten Namen personenbezogen und deshalb **nicht** versioniert – als Vorlage dient `urlaub.beispiel.js`, die dazu in `urlaub.js` umbenannt wird. |
 | `scripts/Gremium` | Stammdaten, Personen, Kategorien und Textbausteine, verschlüsselt. Wird im Sitzungsmanager erzeugt, vom Protokollmodul automatisch übernommen. Personenbezogen – gehört wie `br-zugang.js` aufs geschützte Laufwerk, **nicht** versioniert. |
 | `test-br.js` | Selbsttest ohne Browser: Urlaubs-Logik, Betriebsart, gemeinsamer Skript-Scope (`node test-br.js`) |
 | `test-browser.js` | Browser-Integrationstest beider HTML-Dateien und des Umwandlers via Playwright (`node test-browser.js`) |

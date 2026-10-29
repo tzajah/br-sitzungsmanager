@@ -13,6 +13,21 @@ veröffentlichten Releases).
   Anwendung in Google Chrome zu öffnen. Die Einstellung steht in der Zugangsdatei
   `br-zugang.js` und gilt nach deren erneutem Herunterladen und Ablegen für alle Rechner und
   beide Module. Die Anmeldung bleibt möglich.
+- **Kalender mit Terminen und Erinnerungen.** Neben Abwesenheiten und Sitzungen lassen sich
+  eigene Termine anlegen, mit Vorlauf je Termin (keine Erinnerung bis 2 Wochen vorher,
+  Standard 1 Woche). Fällige Termine zeigt die Glocke in der Seitenleiste; nach „Datei
+  laden“ und Passwort erscheint ein Hinweis. „Gelesen“ gilt pro Browser. Erinnert wird nur
+  bei geöffneter App.
+- **Meldungen einlesen direkt im Kalender.** Mit dem Arbeits-Passwort, ohne Umweg über das
+  Admin-Menü (dort weiterhin möglich).
+
+### Entfernt
+- **`scripts/urlaub.js`** (und `urlaub.beispiel.js`). Urlaube stehen nur noch in der
+  Sicherungsdatei und reisen per `Gremium` ins Protokollmodul. **Umstellung:** vor dem
+  Austausch einmal mit der alten Version öffnen und sichern, danach `scripts/urlaub.js`
+  löschen (personenbezogen, wird nicht mehr gelesen). Die neue Version für alle gleichzeitig
+  auf dem Laufwerk austauschen; keine lokalen Altkopien weiterbenutzen, sie würden Termine
+  beim Sichern verlieren. Weiterhin gilt: immer nur eine Person bearbeitet gleichzeitig.
 
 ### Behoben
 - **Die Einladungs-Mail lud alle Ersatzmitglieder ein.** Jetzt nur noch die, die für diese

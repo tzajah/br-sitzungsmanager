@@ -20,7 +20,9 @@ Beide sind ehrenamtliche Betriebsratsmitglieder, keine IT-Fachleute, und arbeite
 Firmen-Notebooks unter Windows. Die Mitglieder des Gremiums sind eine dritte, passive
 Nutzergruppe: Sie sehen die projizierte Präsentation und die verteilten PDFs, bedienen
 die App aber nicht. `br-urlaub-melden.html` ist die einzige Datei, die alle Mitglieder
-selbst öffnen (ohne Passwort).
+selbst öffnen (ohne Passwort), um Abwesenheiten zu melden. Der gemeinsame Kalender mit
+Terminen und Erinnerungen (Glocke, Hinweis nach dem Login; „gelesen“ gilt pro Browser)
+liegt in der verschlüsselten Sicherungsdatei, nicht in einer eigenen Skriptdatei.
 
 ## Product Purpose
 
