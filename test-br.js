@@ -241,6 +241,18 @@ console.log('OK  Geplante Anwesenheit und Gästeliste reisen mit, überschreiben
   const altG = lokal();
   assert.ok(!k.ergebnisseEinspielen(altG, ohneT2Flag).entfallen.beschluesse.some(b => b.id === 'b3'), 'ältere Datei: fehlender TOP entfällt nicht');
 
+  /* Nachträge (nachgetragen:true) gibt es nur im Sitzungsmanager: fehlen sie in der Datei, bleiben sie erhalten. */
+  const nach = lokal();
+  nach.tops[0].beschluesse.push({ id: 'bn', antrag: 'nachgetragen', status: 'intern', nachgetragen: true });
+  nach.tops[0].aufgaben.push({ id: 'an', was: 'nachgetragen', status: 'offen', nachgetragen: true });
+  const bilN = k.ergebnisseEinspielen(nach, datei());
+  assert.ok(nach.tops[0].beschluesse.some(b => b.id === 'bn') && nach.tops[0].aufgaben.some(a => a.id === 'an'), 'Nachträge überleben die Ergebnisübernahme');
+  assert.strictEqual(bilN.entfallen.beschluesse.length + '/' + bilN.entfallen.aufgaben.length, '2/1', 'Nachträge zählen nicht als entfallen');
+  const nachT = lokal(); nachT.tops[1].beschluesse.push({ id: 'bn2', antrag: 'x', nachgetragen: true });
+  const ohneT2n = datei(); ohneT2n.punkte.pop();
+  k.ergebnisseEinspielen(nachT, ohneT2n);
+  assert.ok(nachT.tops[1].beschluesse.some(b => b.id === 'bn2'), 'Nachtrag bleibt auch bei im Protokoll gelöschtem TOP');
+
   const prot = lokal(); prot.besetzung = { am: '2026-01-01', groesse: 3, mitglieder: [] };
   const ziel = lokal();
   k.ergebnisseEinspielen(ziel, k.ergebnisNutzlast(prot));

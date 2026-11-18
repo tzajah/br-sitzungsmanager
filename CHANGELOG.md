@@ -8,6 +8,16 @@ veröffentlichten Releases).
 ## [Unreleased]
 
 ### Hinzugefügt
+- **Beschlüsse und Aufgaben nachtragen (nur Admin).** In den Übersichten „Beschlüsse“ und
+  „Aufgaben“ trägt der Admin über „+ Nachtragen“ Altbestand an einem TOP oder Unterpunkt
+  einer bestehenden Sitzung ein. Die Beschlussnummer ist vorbelegt und überschreibbar,
+  doppelte Nummern werden abgewiesen. Nachgetragene Einträge sind gekennzeichnet, lassen
+  sich bearbeiten, umhängen und löschen und bleiben bei „Ergebnisse übernehmen“ erhalten.
+- **Pausenscreen in der Präsentation.** Im Admin-Menü (Reiter „Tagesordnung“) lässt sich ein
+  Pausen-Button für die Tagesordnungs-Präsentation einschalten; die Pausenscreen-Datei
+  (Standard: `Pausenscreen.html` im Programmordner, nicht im Repo) wird einmal ausgewählt und
+  in jede Präsentation eingebettet. Taste P oder Button blendet ein, Esc oder „Pause beenden“
+  aus; während der Pause wird nicht geblättert.
 - **Edge-Warnung vor dem Login.** Im Admin-Menü (Reiter „Zugang“) lässt sich eine Warnung
   einschalten, die unter Microsoft Edge bei jedem Start auf dem Login-Schirm empfiehlt, die
   Anwendung in Google Chrome zu öffnen. Die Einstellung steht in der Zugangsdatei
@@ -15,7 +25,7 @@ veröffentlichten Releases).
   beide Module. Die Anmeldung bleibt möglich.
 - **Kalender mit Terminen und Erinnerungen.** Neben Abwesenheiten und Sitzungen lassen sich
   eigene Termine anlegen, mit Vorlauf je Termin (keine Erinnerung bis 2 Wochen vorher,
-  Standard 1 Woche). Fällige Termine zeigt die Glocke in der Seitenleiste; nach „Datei
+  Standard 1 Woche). Fällige Termine zeigt die Glocke unten rechts im Fenster; nach „Datei
   laden“ und Passwort erscheint ein Hinweis. „Gelesen“ gilt pro Browser. Erinnert wird nur
   bei geöffneter App.
 - **Meldungen einlesen direkt im Kalender.** Wer mit dem Arbeits-Passwort angemeldet ist,

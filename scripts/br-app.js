@@ -1332,7 +1332,11 @@ function bindePruef(el, holen, setzen, nach) {
   if (!el) return;
   el.checked = !!holen();
   if (!darfBearbeiten()) { el.disabled = true; return; }
-  el.addEventListener('change', () => { setzen(el.checked); speichern(); if (nach) nach(); });
+  /* Schreibrecht kann nach dem Binden entfallen (Lese-Tab) – dann Haken zurücksetzen statt Daten zu ändern. */
+  el.addEventListener('change', () => {
+    if (!darfBearbeiten()) { el.checked = !!holen(); el.disabled = true; return; }
+    setzen(el.checked); speichern(); if (nach) nach();
+  });
 }
 /* Beim Anzeigen und Speichern wird stets sanitisiert (XSS-Schutz). */
 function bindeRichText(editor, holen, setzen) {
@@ -1627,6 +1631,114 @@ function terminDialog(id) {
       dlg.close();
       daten.termine = terminNormieren(daten.termine).filter(x => x.id !== t.id);
       danach();
+    }, 'Löschen', true);
+  };
+  dlg.showModal();
+}
+
+/* Admin-Nachtrag: Beschluss/Aufgabe aus der Zeit vor dem Tool an einen TOP einer bestehenden Sitzung hängen, bearbeiten, löschen.
+   art = 'beschluss' | 'aufgabe'; e = Eintrag aus der Übersicht (Bearbeiten) oder null (neu). */
+function darfNachtragen() { return istAdmin() && darfBearbeiten(); }
+function nachtragTopListe(s) {
+  const l = [];
+  ((s && s.tops) || []).forEach((t, i) => {
+    l.push({ nr: String(i + 1), top: t });
+    (t.unterpunkte || []).forEach((u, j) => l.push({ nr: (i + 1) + '.' + (j + 1), top: u }));
+  });
+  return l;
+}
+function nachtragDialog(art, e) {
+  if (!darfNachtragen()) return;
+  const bs = art === 'beschluss', feld = bs ? 'beschluesse' : 'aufgaben';
+  let dlg = document.getElementById('nachtragDialog');
+  if (!dlg) { dlg = document.createElement('dialog'); dlg.id = 'nachtragDialog'; document.body.appendChild(dlg); }
+  const w = e ? (bs ? e.b : e.auf) : null;
+  const sitzungen = daten.sitzungen.slice().sort((x, y) => (y.datum || y.angelegtAm || '').localeCompare(x.datum || x.angelegtAm || ''));
+  const opt = (v, t, sel) => '<option value="' + esc(v) + '"' + (sel ? ' selected' : '') + '>' + esc(t) + '</option>';
+  dlg.innerHTML = '<div class="dlg-kopf"><h3>' + (bs ? 'Beschluss' : 'Aufgabe') + (e ? ' bearbeiten' : ' nachtragen') + '</h3></div>' +
+    '<div class="dlg-koerper">' +
+      '<label class="feld">Sitzung<select class="eingabe" data-f="sitzung">' +
+        sitzungen.map(s => opt(s.id, (s.nr || '–') + ' · ' + (s.datum ? fmtDatum(s.datum) : 'ohne Datum'), e && e.sitzung === s)).join('') + '</select></label>' +
+      '<label class="feld">TOP<select class="eingabe" data-f="top"></select></label>' +
+      (bs ?
+        '<div class="raster s3"><label class="feld">Lfd. Nr.<input type="number" class="eingabe" data-f="lfd" value="' + esc(w ? w.lfd : '') + '"></label>' +
+        '<label class="feld">Jahr<input type="number" class="eingabe" data-f="jahr" value="' + esc(w ? w.jahr : '') + '"></label></div>' +
+        '<label class="feld">Antrag (Wortlaut)<textarea class="eingabe" data-f="antrag" rows="3">' + esc(w ? w.antrag : '') + '</textarea></label>' +
+        '<label class="feld">Ergebnis<select class="eingabe" data-f="ergebnis"><option value="">Bitte wählen</option>' +
+          opt('angenommen', 'Angenommen', w && w.ergebnis === 'angenommen') + opt('abgelehnt', 'Abgelehnt', w && w.ergebnis === 'abgelehnt') + '</select></label>' +
+        '<div class="raster s3"><label class="feld">Ja<input type="number" min="0" class="eingabe" data-f="ja" value="' + esc(w ? w.ja : '') + '"></label>' +
+        '<label class="feld">Nein<input type="number" min="0" class="eingabe" data-f="nein" value="' + esc(w ? w.nein : '') + '"></label>' +
+        '<label class="feld">Enthaltung<input type="number" min="0" class="eingabe" data-f="enthaltung" value="' + esc(w ? w.enthaltung : '') + '"></label></div>' +
+        '<label class="feld">Status<select class="eingabe" data-f="status">' +
+          Object.keys(BESCHLUSS_STATUS).map(k => opt(k, BESCHLUSS_STATUS[k], k === (w ? w.status : 'in_arbeit'))).join('') + '</select></label>'
+      :
+        '<label class="feld">Was<textarea class="eingabe" data-f="was" rows="3">' + esc(w ? w.was : '') + '</textarea></label>' +
+        '<label class="feld">Wer<input type="text" class="eingabe" data-f="wer" value="' + esc(w ? w.wer : '') + '"></label>' +
+        '<label class="feld">Bis<input type="date" class="eingabe" data-f="bis" value="' + esc(w ? w.bis : '') + '"></label>' +
+        '<label class="feld">Status<select class="eingabe" data-f="status">' +
+          Object.keys(AUFGABE_STATUS).map(k => opt(k, AUFGABE_STATUS[k], k === (w ? w.status : 'offen'))).join('') + '</select></label>') +
+      '<p class="klein-grau" id="nachtragHinweis"></p>' +
+    '</div>' +
+    '<div class="dlg-fuss">' +
+      (e ? '<button class="btn btn-gefahr" id="nachtragLoeschen" style="margin-right:auto">Löschen</button>' : '') +
+      '<button class="btn" id="nachtragAbbr">Abbrechen</button>' +
+      '<button class="btn btn-primaer" id="nachtragSpeichern">Speichern</button></div>';
+  const f = n => dlg.querySelector('[data-f="' + n + '"]');
+  const hinweis = text => { dlg.querySelector('#nachtragHinweis').textContent = text; };
+  const sitzung = () => daten.sitzungen.find(s => s.id === f('sitzung').value);
+  const tops = () => nachtragTopListe(sitzung());
+  const topsZeigen = () => {
+    const l = tops();
+    f('top').innerHTML = l.map((x, i) => opt(i, x.nr + ' ' + (x.top.titel || ''), e && x.top === e.top)).join('');
+    dlg.querySelector('#nachtragSpeichern').disabled = !l.length;
+    hinweis(l.length ? '' : 'Diese Sitzung hat keine TOPs. Bitte zuerst in der Tagesordnung anlegen.');
+  };
+  const vorbelegen = () => {   /* neuer Beschluss: Jahr aus dem Sitzungsdatum, nächste freie Nummer */
+    if (!bs || e) return;
+    const s = sitzung(); if (!s) return;
+    f('jahr').value = jahrAus(s.datum || s.angelegtAm);
+    f('lfd').value = naechsteBeschlussLfd(daten, Number(f('jahr').value));
+  };
+  f('sitzung').onchange = () => { topsZeigen(); vorbelegen(); };
+  topsZeigen(); vorbelegen();
+  dlg.querySelector('#nachtragAbbr').onclick = () => dlg.close();
+  dlg.querySelector('#nachtragSpeichern').onclick = () => {
+    if (!darfNachtragen()) return;
+    const ziel = tops()[Number(f('top').value)];
+    if (!ziel) return hinweis('Diese Sitzung hat keine TOPs. Bitte zuerst in der Tagesordnung anlegen.');
+    let o;
+    if (bs) {
+      const lfd = parseInt(f('lfd').value, 10), jahr = parseInt(f('jahr').value, 10);
+      if (!(lfd > 0) || !(jahr > 1900)) return hinweis('Laufende Nummer und Jahr sind Pflicht.');
+      if (!f('antrag').value.trim()) return hinweis('Der Antrag (Wortlaut) ist Pflicht.');
+      if (!f('ergebnis').value) return hinweis('Das Ergebnis ist Pflicht.');
+      if (alleBeschluesse(daten).some(x => x.b !== w && Number(x.b.lfd) === lfd && Number(x.b.jahr) === jahr))
+        return hinweis('Die Beschlussnummer ' + lfd + '/' + jahr + ' ist bereits vergeben.');
+      o = w || neuerBeschluss(daten, jahr);
+      Object.assign(o, { lfd, jahr, antrag: f('antrag').value, ergebnis: f('ergebnis').value, status: f('status').value,
+        ja: f('ja').value, nein: f('nein').value, enthaltung: f('enthaltung').value });
+    } else {
+      if (!f('was').value.trim()) return hinweis('Die Aufgabe (Was) ist Pflicht.');
+      o = w || neueAufgabe();
+      Object.assign(o, { was: f('was').value, wer: f('wer').value, bis: f('bis').value, status: f('status').value });
+    }
+    o.nachgetragen = true;
+    if (e && ziel.top !== e.top) e.top[feld] = e.top[feld].filter(x => x !== o);
+    if (!e || ziel.top !== e.top) (ziel.top[feld] = ziel.top[feld] || []).push(o);
+    dirtySitzungen.add(sitzung().id); if (e) dirtySitzungen.add(e.sitzung.id);
+    dlg.close();
+    speichern(); renderHaupt();
+    zeigeToast((bs ? 'Beschluss' : 'Aufgabe') + (e ? ' geändert.' : ' nachgetragen.'));
+  };
+  if (e) dlg.querySelector('#nachtragLoeschen').onclick = () => {
+    if (!darfNachtragen()) return;
+    bestaetigen((bs ? 'Beschluss' : 'Aufgabe') + ' löschen', 'Nachgetragenen Eintrag wirklich löschen?', () => {
+      if (!darfNachtragen()) return;
+      dlg.close();
+      e.top[feld] = e.top[feld].filter(x => x !== w);
+      dirtySitzungen.add(e.sitzung.id);
+      speichern(); renderHaupt();
+      zeigeToast('Eintrag gelöscht.');
     }, 'Löschen', true);
   };
   dlg.showModal();
@@ -1968,6 +2080,7 @@ function renderBeschlussUebersicht(c) {
       '<h2>Beschlüsse</h2>' +
       '<div class="kopf-kennung">Gremiumsweite Übersicht</div></div>' +
       '<div class="kopf-aktionen">' +
+        (darfNachtragen() ? '<button class="btn" id="buNachtragen">+ Nachtragen</button>' : '') +
         '<button class="btn" id="buCsv">CSV exportieren</button>' +
         '<button class="btn btn-primaer" id="buPdf">Als PDF</button>' +
       '</div></div>' +
@@ -2051,6 +2164,7 @@ function renderBeschlussUebersicht(c) {
           '<td>' + (e.sitzung.datum ? esc(fmtDatum(e.sitzung.datum)) : '–') + '</td>' +
           '<td>' + esc(e.sitzung.nr || '') + '</td>' +
           '<td><div class="bu-antrag">' + esc(e.b.antrag || '(kein Wortlaut erfasst)') + '</div>' +
+            (e.b.nachgetragen ? '<div class="klein-grau">nachgetragen</div>' : '') +
             (e.top.titel ? '<div class="klein-grau">TOP ' + esc(e.nr) + ': ' + esc(e.top.titel) + '</div>' : '') + '</td>' +
           '<td><div class="tag-chips">' + tagChips + '</div></td>' +
           '<td><span class="ampel ' + kl + '">' + label + '</span>' + (e.aus.manuell ? '<div class="klein-grau">manuell</div>' : '') + '</td>' +
@@ -2060,6 +2174,8 @@ function renderBeschlussUebersicht(c) {
       }).join('') + '</tbody></table>';
     tab.querySelectorAll('tr[data-sid]').forEach(tr => {
       tr.onclick = () => {
+        const e = rows[parseInt(tr.dataset.ri, 10)];
+        if (e.b.nachgetragen && darfNachtragen()) return nachtragDialog('beschluss', e);
         ui.sitzungId = tr.dataset.sid; ui.ansicht = 'sitzung';
         /* Sitzungsmanager führt keinen Protokoll-Reiter – dort zur Tagesordnung. */
         ui.tab = modusHatReiter('protokoll') ? 'protokoll' : 'tagesordnung';
@@ -2089,6 +2205,7 @@ function renderBeschlussUebersicht(c) {
   bisInp.onchange = () => { f.bisDatum = bisInp.value; zeichne(); };
   sInp.oninput = () => { f.suche = sInp.value; zeichne(); };
 
+  if (c.querySelector('#buNachtragen')) c.querySelector('#buNachtragen').onclick = () => nachtragDialog('beschluss', null);
   c.querySelector('#buCsv').onclick = () => beschluesseCsvExport(gefiltert());
   c.querySelector('#buPdf').onclick = ev => beschluessePdfExport(ev.currentTarget, gefiltert());
 }
@@ -2179,6 +2296,7 @@ function renderAufgabenUebersicht(c) {
       '<h2>Aufgaben</h2>' +
       '<div class="kopf-kennung">Gremiumsweite Übersicht</div></div>' +
       '<div class="kopf-aktionen">' +
+        (darfNachtragen() ? '<button class="btn" id="auNachtragen">+ Nachtragen</button>' : '') +
         '<button class="btn" id="auCsv">CSV exportieren</button>' +
         '<button class="btn btn-primaer" id="auPdf">Als PDF</button>' +
       '</div></div>' +
@@ -2246,6 +2364,7 @@ function renderAufgabenUebersicht(c) {
           '<td>' + esc(e.sitzung.nr || '') + '</td>' +
           '<td class="mono">' + esc(e.nr) + '</td>' +
           '<td><div class="bu-antrag">' + esc(e.auf.was || '') + '</div>' +
+            (e.auf.nachgetragen ? '<div class="klein-grau">nachgetragen</div>' : '') +
             (e.top.titel ? '<div class="klein-grau">TOP ' + esc(e.nr) + ': ' + esc(e.top.titel) + '</div>' : '') + '</td>' +
           '<td>' + esc(e.auf.wer || '–') + '</td>' +
           '<td>' + (e.auf.bis ? esc(fmtDatum(e.auf.bis)) : '–') + '</td>' +
@@ -2254,6 +2373,8 @@ function renderAufgabenUebersicht(c) {
       }).join('') + '</tbody></table>';
     tab.querySelectorAll('tr[data-sid]').forEach(tr => {
       tr.onclick = () => {
+        const e = rows[parseInt(tr.dataset.ri, 10)];
+        if (e.auf.nachgetragen && darfNachtragen()) return nachtragDialog('aufgabe', e);
         ui.sitzungId = tr.dataset.sid; ui.ansicht = 'sitzung';
         /* Sitzungsmanager führt keinen Protokoll-Reiter – dort zur Tagesordnung. */
         ui.tab = modusHatReiter('protokoll') ? 'protokoll' : 'tagesordnung';
@@ -2280,6 +2401,7 @@ function renderAufgabenUebersicht(c) {
   vonInp.onchange = () => { f.vonDatum = vonInp.value; zeichne(); };
   bisInp.onchange = () => { f.bisDatum = bisInp.value; zeichne(); };
   sInp.oninput = () => { f.suche = sInp.value; zeichne(); };
+  if (c.querySelector('#auNachtragen')) c.querySelector('#auNachtragen').onclick = () => nachtragDialog('aufgabe', null);
   c.querySelector('#auCsv').onclick = () => aufgabenCsvExport(gefiltert());
   c.querySelector('#auPdf').onclick = ev => aufgabenPdfExport(ev.currentTarget, gefiltert());
 }

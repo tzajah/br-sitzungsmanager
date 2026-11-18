@@ -123,11 +123,12 @@ function tagesordnungEinspielen(alt, neu) {
 function ergebnisListeMischen(lokal, datei, entfallen) {
   const alt = new Map((lokal || []).filter(x => x.id).map(x => [x.id, x]));
   const dateiIds = new Set((datei || []).map(x => x.id).filter(Boolean));
-  (lokal || []).forEach(x => { if (!dateiIds.has(x.id)) entfallen.push(x); });
+  const bleibt = [];   /* Nachträge gibt es nur hier, nicht im Protokoll */
+  (lokal || []).forEach(x => { if (dateiIds.has(x.id)) return; if (x.nachgetragen) bleibt.push(x); else entfallen.push(x); });
   return (datei || []).map(x => {
     const v = x.id && alt.get(x.id);
     return v && v.status !== undefined ? Object.assign({}, x, { status: v.status }) : x;
-  });
+  }).concat(bleibt);
 }
 
 function ergebnisseEinspielen(sitzung, nutzlast) {

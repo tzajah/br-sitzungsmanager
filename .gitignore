@@ -31,3 +31,6 @@ graphify-out/
 node_modules/
 package.json
 package-lock.json
+
+# Pausenscreen (gremiumsspezifisches Branding) bleibt außerhalb des Repos; Auswahl im Admin-Menü.
+Pausenscreen.html

@@ -479,6 +479,10 @@ body[data-theme="dunkel"]{--bg:#0E1211;--fg:#F1F4F2;--dim:#9AA79F;--akz:@AKZ_DUN
   background:var(--btn);border:1px solid var(--linie2);padding:7px 18px;letter-spacing:.08em;text-transform:uppercase;
   transition:opacity .6s ease;z-index:10}
 .hinweis.weg{opacity:0}
+#pause{position:fixed;inset:0;width:100%;height:100%;border:0;z-index:100;background:#000;pointer-events:none}
+#pauseZu{position:fixed;top:14px;right:16px;z-index:101;font:inherit;padding:8px 14px;border:1px solid var(--linie2);background:var(--btn);color:inherit;cursor:pointer;opacity:.35}
+#pauseZu:hover,#pauseZu:focus{opacity:1}
+#pause[hidden],#pauseZu[hidden]{display:none}
 .vermerk{position:fixed;top:18px;left:22px;font-size:13px;letter-spacing:.18em;text-transform:uppercase;
   color:var(--bg);background:var(--fg);padding:3px 10px;z-index:10}
 @media(prefers-reduced-motion:reduce){.leiste{transition:none}}
@@ -522,8 +526,18 @@ const PRAES_JS = `
     document.body.dataset.theme = document.body.dataset.theme === 'dunkel' ? 'hell' : 'dunkel';
     fit(folien[idx]);
   }
+  var pause = document.getElementById('pause'), pauseZu = document.getElementById('pauseZu'), pauseOffen = false;
+  function pauseWechsel(){
+    if(!pause) return;
+    pauseOffen = !pauseOffen;
+    if(pauseOffen && !pause.getAttribute('srcdoc')) pause.srcdoc = JSON.parse(document.getElementById('pauseDaten').textContent);
+    pause.hidden = pauseZu.hidden = !pauseOffen;
+    if(pauseOffen) pauseZu.focus();
+  }
   document.addEventListener('keydown', function(e){
     var k = e.key;
+    if(pauseOffen){ if((k === 'Enter' || k === ' ') && e.target.tagName === 'BUTTON') return; if(k === 'Escape' || k === 'p' || k === 'P') pauseWechsel(); e.preventDefault(); return; }
+    if(k === 'p' || k === 'P'){ pauseWechsel(); return; }
     if(k === 'ArrowRight' || k === ' ' || k === 'PageDown' || k === 'Enter'){ weiter(); e.preventDefault(); }
     else if(k === 'ArrowLeft' || k === 'Backspace' || k === 'PageUp'){ zurueck(); e.preventDefault(); }
     else if(k === 'Home'){ zeige(0); }
@@ -532,16 +546,18 @@ const PRAES_JS = `
     else if(k === 'd' || k === 'D'){ themeWechsel(); }
   });
   document.addEventListener('click', function(e){
-    if(e.target.closest && e.target.closest('.steuer')) return;
+    if(pauseOffen || (e.target.closest && e.target.closest('.steuer'))) return;
     if(e.clientX < window.innerWidth * 0.33){ zurueck(); } else { weiter(); }
   });
   window.addEventListener('resize', function(){ fit(folien[idx]); });
   window.addEventListener('load', function(){ fit(folien[idx]); });
   var b;
-  if((b = document.getElementById('btnWeiter'))) b.onclick = function(e){ e.stopPropagation(); weiter(); };
-  if((b = document.getElementById('btnZurueck'))) b.onclick = function(e){ e.stopPropagation(); zurueck(); };
-  if((b = document.getElementById('btnVoll'))) b.onclick = function(e){ e.stopPropagation(); vollbild(); };
-  if((b = document.getElementById('btnTheme'))) b.onclick = function(e){ e.stopPropagation(); themeWechsel(); };
+  if((b = document.getElementById('btnWeiter'))) b.onclick = function(e){ e.stopPropagation(); if(pauseOffen) return; weiter(); };
+  if((b = document.getElementById('btnZurueck'))) b.onclick = function(e){ e.stopPropagation(); if(pauseOffen) return; zurueck(); };
+  if((b = document.getElementById('btnVoll'))) b.onclick = function(e){ e.stopPropagation(); if(pauseOffen) return; vollbild(); };
+  if((b = document.getElementById('btnTheme'))) b.onclick = function(e){ e.stopPropagation(); if(pauseOffen) return; themeWechsel(); };
+  if((b = document.getElementById('btnPause'))) b.onclick = function(e){ e.stopPropagation(); pauseWechsel(); };
+  if(pauseZu) pauseZu.onclick = function(e){ e.stopPropagation(); pauseWechsel(); };
   setTimeout(function(){ var h = document.getElementById('hinweis'); if(h) h.className = 'hinweis weg'; }, 5000);
   zeige(0);
 })();
@@ -603,6 +619,8 @@ function praesentationHtml(daten, s) {
   });
 
   const vermerk = st.vertraulich ? '<div class="vermerk">Vertraulich</div>' : '';
+  const ps = st.pausenscreen || {};
+  const pause = !!(ps.aktiv && typeof ps.html === 'string' && ps.html);
   const titel = esc('Tagesordnung – ' + (st.gremium || 'Betriebsrat') + ' Nr. ' + (s.nr || ''));
 
   return '<!DOCTYPE html>\n<html lang="de"><head><meta charset="utf-8">' +
@@ -612,11 +630,15 @@ function praesentationHtml(daten, s) {
     '<div class="leiste" id="fortschritt"></div>' +
     '<div class="zaehler" id="zaehler"></div>' + vermerk +
     '<div class="steuer">' +
+      (pause ? '<button id="btnPause" title="Pause (P)" aria-label="Pause"><svg viewBox="0 0 24 24"><path d="M8 5v14M16 5v14"/></svg></button>' : '') +
       '<button id="btnZurueck" title="Zurück" aria-label="Zurück"><svg viewBox="0 0 24 24"><polyline points="15 5 8 12 15 19"/></svg></button>' +
       '<button id="btnWeiter" title="Weiter" aria-label="Weiter"><svg viewBox="0 0 24 24"><polyline points="9 5 16 12 9 19"/></svg></button>' +
       '<button id="btnTheme" title="Hell/Dunkel (D)" aria-label="Hell oder dunkel"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16"/><path d="M12 4v16" /><path d="M12 4h8v16h-8z" fill="currentColor"/></svg></button>' +
       '<button id="btnVoll" title="Vollbild (F)" aria-label="Vollbild"><svg viewBox="0 0 24 24"><polyline points="4 9 4 4 9 4"/><polyline points="15 4 20 4 20 9"/><polyline points="20 15 20 20 15 20"/><polyline points="9 20 4 20 4 15"/></svg></button></div>' +
-    '<div class="hinweis" id="hinweis">&#8592; &#8594; blättern · F Vollbild · D Hell/Dunkel</div>' +
+    '<div class="hinweis" id="hinweis">&#8592; &#8594; blättern · F Vollbild · D Hell/Dunkel' + (pause ? ' · P Pause' : '') + '</div>' +
+    (pause ? '<iframe id="pause" sandbox="allow-scripts" title="Pause" hidden></iframe>' +
+      '<button id="pauseZu" hidden>Pause beenden</button>' +
+      '<script type="application/json" id="pauseDaten">' + JSON.stringify(ps.html).replace(/</g, '\\u003c') + '<\/script>' : '') +
     '<script>' + PRAES_JS + '<\/script></body></html>';
 }
 
@@ -779,7 +801,15 @@ function oeffneStammdaten() {
         'Der interne Schlüssel wird automatisch vergeben; vergebene Kategorien bleiben bestehen.</p>' +
       '<div id="sdKategorien"></div>' +
       knoepfe('<button class="btn btn-klein btn-primaer" id="sdKatNeu">+ Kategorie</button>') +
-      dateiAbgleichHtml('category.js', 'sdKatDownload', 'sdKatLaden')) +
+      dateiAbgleichHtml('category.js', 'sdKatDownload', 'sdKatLaden') +
+      '<h3 class="dlg-sektion adm-zweite">Pausenscreen in der Präsentation</h3>' +
+      '<label class="pruefreihe"><input type="checkbox" id="sdPauseAktiv"> Pausen-Button in der Präsentation anzeigen</label>' +
+      '<div style="display:flex;gap:8px;align-items:center;margin-top:8px">' +
+        '<button class="btn btn-klein" id="sdPauseWahl">Pausenscreen-Datei wählen …</button>' +
+        '<span id="sdPauseInfo" class="klein-grau"></span>' +
+        '<button class="btn btn-klein btn-geist btn-gefahr" id="sdPauseWeg" style="display:none">Entfernen</button></div>' +
+      '<p class="klein-grau">Standard ist die Datei <code>Pausenscreen.html</code> im Programmordner; nach Änderungen an der Datei erneut wählen. ' +
+        'Taste P oder der Pause-Knopf blendet sie in der Präsentation ein.</p>') +
 
     adminReiterHtml('textbausteine',
       '<h3 class="dlg-sektion">Für Protokolle</h3>' +
@@ -874,6 +904,34 @@ function oeffneStammdaten() {
     e.target.value = '';
   };
   logoWeg.onclick = () => { st.logo = null; speichern(); logoAnzeigen(); };
+
+  /* Pausenscreen: HTML-Text liegt in den Stammdaten, weil die Präsentation (Blob-Seite) keine file://-Dateien laden darf */
+  st.pausenscreen = st.pausenscreen || {};
+  const pa = st.pausenscreen, paInfo = dlg.querySelector('#sdPauseInfo'), paWeg = dlg.querySelector('#sdPauseWeg');
+  const pauseAnzeigen = () => {
+    paInfo.textContent = pa.html ? pa.name + ' (' + fmtBytes(pa.html.length) + ')' : (pa.aktiv ? 'Noch keine Datei gewählt – ohne Datei erscheint kein Pause-Button.' : 'keine Datei');
+    paWeg.style.display = pa.html ? '' : 'none';
+  };
+  bindePruef(dlg.querySelector('#sdPauseAktiv'), () => !!pa.aktiv, v => { pa.aktiv = v; }, pauseAnzeigen);
+  pauseAnzeigen();
+  const nurLesen = () => { if (darfBearbeiten()) return false; zeigeToast('In diesem Tab nur lesend.', 'fehler'); return true; };
+  if (!darfBearbeiten()) ['#sdPauseAktiv', '#sdPauseWahl', '#sdPauseWeg'].forEach(q => { dlg.querySelector(q).disabled = true; });
+  dlg.querySelector('#sdPauseWahl').onclick = () => { if (!nurLesen()) document.getElementById('dateiPausenscreen').click(); };
+  document.getElementById('dateiPausenscreen').onchange = e => {
+    const f = e.target.files[0];
+    e.target.value = '';
+    if (!f || nurLesen()) return;
+    if (f.size > 2 * 1024 * 1024) { zeigeToast('Die Datei ist größer als 2 MB.', 'fehler'); return; }
+    const r = new FileReader();
+    r.onload = () => {
+      if (nurLesen()) return;
+      if (!/<html|<!doctype/i.test(r.result)) { zeigeToast('Das ist keine HTML-Datei.', 'fehler'); return; }
+      pa.html = r.result; pa.name = f.name; speichern(); pauseAnzeigen();
+    };
+    r.onerror = () => zeigeToast('Datei konnte nicht gelesen werden: ' + f.name, 'fehler');
+    r.readAsText(f);
+  };
+  paWeg.onclick = () => { if (nurLesen()) return; delete pa.html; delete pa.name; speichern(); pauseAnzeigen(); };
 
   /* Erscheinungsbild */
   st.erscheinung = st.erscheinung || {};

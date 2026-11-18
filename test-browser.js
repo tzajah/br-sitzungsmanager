@@ -3056,6 +3056,100 @@ async function pruefeKalenderRandfaelle() {
 }
 
 /* Nur ein Tab schreibt (Web Lock je Datenbank); Reload/Ausblenden verliert keine Änderung. */
+/* Admin-Nachtrag von Beschlüssen und Aufgaben (Übersichten). */
+async function pruefeNachtrag() {
+  const browser = await chromium.launch();
+  const fehler = [];
+  const sm = await browser.newPage();
+  sm.on('pageerror', e => fehler.push(e.message));
+  await sm.goto(DATEI('BR-Sitzungsmanager.html'));
+  await sm.waitForFunction('typeof APP_MODUS !== "undefined"', null, { timeout: 5000 });
+  await sm.evaluate(`
+    (() => {
+      ${AUFBAU}
+      const s2 = neueSitzung(daten); s2.datum = '2026-09-01'; s2.nr = 'leer'; daten.sitzungen.push(s2);   /* ohne TOPs */
+      window.__s1 = s.id; window.__s2 = s2.id;
+      sitzungsRolle = 'admin'; ui.ansicht = 'beschluesse'; renderHaupt();
+    })()
+  `);
+  const c = '#hauptInhalt ';
+  const klick = sel => sm.evaluate('document.querySelector(' + JSON.stringify(sel) + ').click()');
+  const hinweis = () => sm.textContent('#nachtragHinweis');
+  const setze = (n, v) => sm.evaluate(`(() => { const e = document.querySelector('#nachtragDialog [data-f="${n}"]'); e.value = ${JSON.stringify(v)}; e.dispatchEvent(new Event('change')); })()`);
+
+  /* Knopf nur für Admin mit Schreibrecht */
+  assert.ok(await sm.$(c + '#buNachtragen'), 'Admin sieht den Knopf');
+  for (const [rolle, lese] of [['arbeit', false], ['viewer', false], ['admin', true]]) {
+    const da = await sm.evaluate(`(() => { sitzungsRolle = '${rolle}'; nurLesendWeilAndererTab = ${lese}; renderHaupt();
+      const r = !!document.querySelector('#buNachtragen'); ui.ansicht = 'aufgaben'; renderHaupt();
+      const a = !!document.querySelector('#auNachtragen'); ui.ansicht = 'beschluesse'; nurLesendWeilAndererTab = false; return r || a; })()`);
+    assert.strictEqual(da, false, 'kein Knopf für ' + rolle + (lese ? ' im Lese-Tab' : ''));
+  }
+  await sm.evaluate(`sitzungsRolle = 'admin'; renderHaupt();`);
+
+  /* Beschluss nachtragen */
+  await klick(c + '#buNachtragen');
+  assert.strictEqual(await sm.inputValue('#nachtragDialog [data-f="jahr"]'), '2026', 'Jahr aus Sitzungsdatum');
+  assert.strictEqual(await sm.inputValue('#nachtragDialog [data-f="lfd"]'), '1', 'nächste Nummer vorbelegt');
+  assert.ok(await sm.isVisible('#nachtragDialog') && (await hinweis()).includes('keine TOPs'), 'neueste Sitzung ohne TOPs: Hinweis');
+  await setze('sitzung', await sm.evaluate('__s1'));
+  await klick('#nachtragSpeichern');
+  assert.ok(await sm.isVisible('#nachtragDialog') && (await hinweis()).includes('Antrag'), 'Antrag ist Pflicht, Dialog bleibt offen');
+  await setze('antrag', 'Altbeschluss A');
+  await klick('#nachtragSpeichern');
+  assert.ok((await hinweis()).includes('Ergebnis'), 'Ergebnis ist Pflicht');
+  await setze('ergebnis', 'angenommen'); await setze('ja', '5');
+  await klick('#nachtragSpeichern');
+  let r = await sm.evaluate(`alleBeschluesse(daten).map(e => [e.nr, e.b.lfd, e.b.jahr, e.b.antrag, e.b.nachgetragen, e.b.ergebnis, e.b.ja, e.sitzung.id === __s1])`);
+  assert.deepStrictEqual(r, [['1', 1, 2026, 'Altbeschluss A', true, 'angenommen', '5', true]], 'Beschluss am TOP, nachgetragen, Nr 1/2026');
+  assert.ok(!(await sm.isVisible('#nachtragDialog')), 'Dialog geschlossen');
+  assert.ok((await sm.textContent(c + '#buTabelle')).includes('nachgetragen'), 'Vermerk „nachgetragen"');
+
+  /* doppelte Nummer */
+  await klick(c + '#buNachtragen');
+  await setze('sitzung', await sm.evaluate('__s1')); await setze('lfd', '1'); await setze('antrag', 'B'); await setze('ergebnis', 'abgelehnt');
+  await klick('#nachtragSpeichern');
+  assert.strictEqual(await hinweis(), 'Die Beschlussnummer 1/2026 ist bereits vergeben.');
+  assert.ok(await sm.isVisible('#nachtragDialog'), 'Dialog bleibt offen');
+  assert.strictEqual(await sm.evaluate('alleBeschluesse(daten).length'), 1);
+
+  /* Sitzung ohne TOPs */
+  await setze('sitzung', await sm.evaluate('__s2'));
+  assert.ok((await hinweis()).includes('keine TOPs'), 'Hinweis ohne TOPs');
+  assert.ok(await sm.isDisabled('#nachtragSpeichern'), 'Speichern gesperrt');
+  await sm.evaluate(`document.getElementById('nachtragDialog').close()`);
+
+  /* Nicht nachgetragene Zeile: Klick geht zur Sitzung, nicht in den Dialog */
+  await sm.evaluate(`alleBeschluesse(daten)[0].b.nachgetragen = false; renderHaupt(); document.querySelector('#buTabelle tr[data-sid]').click();`);
+  assert.ok(!(await sm.isVisible('#nachtragDialog')) && await sm.evaluate(`ui.ansicht === 'sitzung'`), 'normale Zeile navigiert');
+
+  /* Aufgabe nachtragen, umhängen, löschen */
+  await sm.evaluate(`
+    (() => { const s = daten.sitzungen.find(x => x.id === __s1); s.tops.push(neuerTop({ titel: 'Zweiter' }));
+      ui.ansicht = 'aufgaben'; renderHaupt(); })()`);
+  await klick(c + '#auNachtragen'); await setze('sitzung', await sm.evaluate('__s1'));
+  await klick('#nachtragSpeichern');
+  assert.ok(await sm.isVisible('#nachtragDialog') && (await hinweis()).includes('Aufgabe'), 'Was ist Pflicht');
+  await setze('was', 'Altaufgabe'); await setze('wer', 'Erika'); await setze('bis', '2026-10-01');
+  await klick('#nachtragSpeichern');
+  r = await sm.evaluate(`alleAufgabenGremium(daten).map(e => [e.nr, e.auf.was, e.auf.nachgetragen, e.auf.wer, e.auf.bis])`);
+  assert.deepStrictEqual(r, [['1', 'Altaufgabe', true, 'Erika', '2026-10-01']]);
+  await klick(c + '#auTabelle tr[data-sid]');
+  assert.strictEqual(await sm.inputValue('#nachtragDialog [data-f="was"]'), 'Altaufgabe', 'Bearbeiten-Dialog');
+  await setze('top', '1'); await setze('was', 'Altaufgabe 2');
+  await klick('#nachtragSpeichern');
+  r = await sm.evaluate(`alleAufgabenGremium(daten).map(e => [e.nr, e.auf.was])`);
+  assert.deepStrictEqual(r, [['2', 'Altaufgabe 2']], 'auf anderen TOP umgehängt, nicht dupliziert');
+  await klick(c + '#auTabelle tr[data-sid]');
+  await klick('#nachtragLoeschen');
+  await klick('#dlgBestaetigen #bstOk');
+  assert.strictEqual(await sm.evaluate('alleAufgabenGremium(daten).length'), 0, 'Aufgabe gelöscht');
+
+  assert.deepStrictEqual(fehler, [], 'keine Laufzeitfehler');
+  await browser.close();
+  console.log('OK  Nachtragen von Beschlüssen und Aufgaben (Admin)');
+}
+
 async function pruefeEinSchreibenderTab() {
   const browser = await chromium.launch();
   const fehler = [];
@@ -3472,6 +3566,89 @@ async function pruefeEdgeWarnung() {
   console.log('OK  Edge-Warnung: nur mit Flag und Edge-UserAgent');
 }
 
+async function pruefePausenscreen() {
+  const browser = await chromium.launch();
+  const sm = await browser.newPage();
+  const fehler = [];
+  sm.on('pageerror', e => fehler.push(e.message));
+  await sm.goto(DATEI('BR-Sitzungsmanager.html'));
+  await sm.waitForFunction('typeof APP_MODUS !== "undefined"', null, { timeout: 5000 });
+  const PAUSE = '<!doctype html><html><body><h1>PAUSE-INHALT</h1><!-- </script> --></body></html>';
+  const html = await sm.evaluate(`
+    (() => {
+      ${AUFBAU}
+      const ohne = praesentationHtml(daten, s);
+      daten.stammdaten.pausenscreen = { aktiv: true, html: '' };
+      const leer = praesentationHtml(daten, s);
+      daten.stammdaten.pausenscreen = { aktiv: true, html: ${JSON.stringify(PAUSE)}, name: 'x.html' };
+      return { ohne: ohne, leer: leer, mit: praesentationHtml(daten, s) };
+    })()
+  `);
+  for (const k of ['ohne', 'leer']) assert.ok(!/id="pause"|id="btnPause"|id="pauseDaten"|P Pause/.test(html[k]), k + ': keine Pause-Elemente');
+  assert.ok(html.mit.includes('id="btnPause"') && html.mit.includes('P Pause'), 'mit Option: Knopf und Hinweis');
+  assert.strictEqual(html.mit.split('</script>').length - 1, 2, 'eingebettetes </script> bricht das Dokument nicht');
+
+  const pg = await browser.newPage();
+  pg.on('pageerror', e => fehler.push(e.message));
+  await pg.setContent(html.mit);
+  const folie = () => pg.evaluate('document.getElementById("zaehler").textContent');
+  const sichtbar = () => pg.evaluate('!document.getElementById("pause").hidden');
+  assert.ok(!(await sichtbar()), 'Pause zunächst verborgen');
+  await pg.keyboard.press('p');
+  assert.ok(await sichtbar(), 'P blendet die Pause ein');
+  const sandbox = await pg.evaluate('document.getElementById("pause").getAttribute("sandbox")');
+  assert.strictEqual(sandbox, 'allow-scripts', 'iframe ohne allow-same-origin');
+  const inhalt = await pg.frameLocator('#pause').locator('h1').textContent();
+  assert.strictEqual(inhalt, 'PAUSE-INHALT');
+  const vor = await folie();
+  await pg.keyboard.press('ArrowRight');
+  assert.strictEqual(await folie(), vor, 'Pfeiltaste blättert während der Pause nicht');
+  await pg.keyboard.press('Escape');
+  assert.ok(!(await sichtbar()), 'Esc schließt die Pause');
+  await pg.click('#btnPause');
+  assert.ok(await sichtbar(), 'Knopf öffnet');
+  await pg.mouse.click(600, 300);   /* Klick ins iframe nimmt den Fokus – Rückweg nur über den Knopf */
+  assert.strictEqual(await folie(), vor, 'Klick während der Pause blättert nicht');
+  /* Klick auf die Position der verdeckten Steuerknöpfe (Iframe ist klickdurchlässig) darf nicht weiterschalten */
+  for (const id of ['btnWeiter', 'btnZurueck', 'btnTheme']) {
+    const bb = await pg.locator('#' + id).boundingBox();
+    await pg.mouse.click(bb.x + bb.width / 2, bb.y + bb.height / 2);
+  }
+  assert.strictEqual(await folie(), vor, 'Steuerknöpfe sind während der Pause wirkungslos');
+  await pg.focus('#pauseZu');
+  await pg.keyboard.press('Enter');
+  assert.ok(!(await sichtbar()), 'Enter auf „Pause beenden" schließt');
+  assert.strictEqual(await folie(), vor, 'Enter blättert dabei nicht');
+  await pg.click('#btnPause');
+  assert.ok(await sichtbar(), 'erneut geöffnet');
+  await pg.click('#pauseZu');
+  assert.ok(!(await sichtbar()), '„Pause beenden" schließt');
+  await pg.keyboard.press('ArrowRight');
+  assert.notStrictEqual(await folie(), vor, 'danach blättert die Präsentation wieder');
+
+  /* Admin-Menü: Checkbox setzt die Option, Wahl-Knopf liest nur gültige HTML-Dateien */
+  await sm.evaluate(`(() => { ${AUFBAU} sitzungsRolle = 'admin'; verkabeln(); oeffneStammdaten(); })()`);
+  await sm.evaluate('document.querySelector("#sdPauseAktiv").click()');
+  await sm.setInputFiles('#dateiPausenscreen', { name: 'Pause.html', mimeType: 'text/html', buffer: Buffer.from(PAUSE) });
+  await sm.waitForFunction('daten.stammdaten.pausenscreen && daten.stammdaten.pausenscreen.html', null, { timeout: 3000 });
+  const ps = await sm.evaluate('daten.stammdaten.pausenscreen');
+  assert.ok(ps.aktiv && ps.name === 'Pause.html' && ps.html.includes('PAUSE-INHALT'), 'Admin-Menü speichert aktiv, Name, Inhalt');
+  await sm.setInputFiles('#dateiPausenscreen', { name: 'x.txt', mimeType: 'text/plain', buffer: Buffer.from('kein html hier') });
+  await sm.waitForTimeout(300);
+  assert.strictEqual(await sm.evaluate('daten.stammdaten.pausenscreen.name'), 'Pause.html', 'Nicht-HTML wird abgelehnt');
+  /* Lese-Tab: nichts veränderbar */
+  await sm.evaluate(`(() => { nurLesendWeilAndererTab = true; oeffneStammdaten(); })()`);
+  assert.ok(await sm.evaluate('document.querySelector("#sdPauseWeg").disabled && document.querySelector("#sdPauseWahl").disabled'), 'Lese-Tab: Knöpfe deaktiviert');
+  await sm.evaluate('document.querySelector("#sdPauseWeg").onclick()');
+  assert.ok(await sm.evaluate('!!daten.stammdaten.pausenscreen.html'), 'Lese-Tab: Entfernen ändert nichts');
+  await sm.evaluate(`(() => { nurLesendWeilAndererTab = false; oeffneStammdaten(); })()`);
+  await sm.evaluate('document.querySelector("#sdPauseWeg").click()');
+  assert.ok(!(await sm.evaluate('daten.stammdaten.pausenscreen.html')), 'Entfernen löscht den Inhalt');
+  assert.deepStrictEqual(fehler, [], 'keine Seitenfehler');
+  await browser.close();
+  console.log('OK  Pausenscreen: Option, Einbettung, P/Esc, Admin-Menü');
+}
+
 (async () => {
   await pruefe('BR-Sitzungsmanager.html', 'sitzung');
   await pruefe('BR-Protokoll.html', 'protokoll');
@@ -3502,6 +3679,8 @@ async function pruefeEdgeWarnung() {
   await pruefeKalenderTermine();
   await pruefeErinnerungen();
   await pruefeKalenderRandfaelle();
+  await pruefeNachtrag();
+  await pruefePausenscreen();
   await pruefeEinSchreibenderTab();
   console.log('\nAlle Browser-Prüfungen bestanden.');
 })().catch(e => { console.error(e); process.exit(1); });

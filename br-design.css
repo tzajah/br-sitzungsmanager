@@ -101,9 +101,10 @@ a:hover{text-decoration-thickness:2px}
   border:1px solid var(--seitenleiste-linie);
   padding:calc(var(--takt) * .75) calc(var(--takt) * 2)}
 .marke-kennfeld::before{content:"";width:8px;height:8px;flex:none;background:var(--akzent)}
-.glocke{position:absolute;top:calc(var(--takt) * 3);right:calc(var(--takt) * 3);background:none;border:0;cursor:pointer;color:var(--seitenleiste-text);padding:calc(var(--takt) * 1.5)}
+/* fest unten rechts; unter Sperrschirm und Toasts (z-index 1000), Toasts stehen darüber */
+.glocke{position:fixed;bottom:calc(var(--takt) * 5);right:calc(var(--takt) * 5);z-index:900;background:var(--seitenleiste);border:2px solid var(--kante);cursor:pointer;color:var(--seitenleiste-text);padding:calc(var(--takt) * 2.5);line-height:0}
 .glocke .ic{width:20px;height:20px}
-.glocke:hover{background:rgba(255,255,255,.1)}
+.glocke:hover{background:var(--seitenleiste-tief)}
 .glocke-zahl{position:absolute;top:0;right:0;min-width:16px;height:16px;padding:0 4px;background:var(--akzent);color:#fff;font-size:10.5px;font-weight:700;line-height:16px;text-align:center}
 .erinnerung{display:flex;gap:calc(var(--takt) * 2);align-items:center;padding:calc(var(--takt) * 2) 0;border-bottom:1px solid var(--linie)}
 .erinnerung-text{flex:1;text-align:left;background:none;border:0;cursor:pointer;font:inherit;color:inherit;padding:0}
@@ -685,7 +686,7 @@ dialog.klein{max-width:480px}
 @media(max-width:760px){.person-zeile{grid-template-columns:1fr 74px}}
 .mz-werkzeuge{display:flex;gap:var(--takt);justify-content:flex-end}
 
-#toastContainer{position:fixed;bottom:calc(var(--takt) * 5);right:calc(var(--takt) * 5);z-index:1000;
+#toastContainer{position:fixed;bottom:calc(var(--takt) * 19);right:calc(var(--takt) * 5);z-index:1000;
   display:flex;flex-direction:column;gap:calc(var(--takt) * 2.25)}
 .toast{background:var(--kante);color:#fff;padding:calc(var(--takt) * 2.75) calc(var(--takt) * 4);font-size:13.5px;
   border-top:2px solid var(--signal-hell);box-shadow:0 8px 26px rgba(10,14,12,.35);max-width:390px;

@@ -83,6 +83,10 @@ Anwesenheitsliste, Niederschrift) nach den einschlägigen Vorschriften des BetrV
   („In Arbeit" / „Zugestellt").
 - **Aufgabenübersicht** über alle Sitzungen (aus den Protokollen erzeugt) mit
   Filter (Jahr/Zuständig/Suche) und Export als PDF und CSV.
+- **Nachtragen (nur Admin):** In beiden Übersichten legt „+ Nachtragen" einen Beschluss bzw. eine Aufgabe
+  aus der Zeit vor dem Tool an einem TOP/Unterpunkt einer bestehenden Sitzung an (Beschlussnummer vorbelegt, doppelte
+  Nummern werden abgewiesen). Solche Einträge tragen den Vermerk „nachgetragen"; ein Klick darauf öffnet sie für den Admin
+  zum Bearbeiten (auch Umhängen auf einen anderen TOP) oder Löschen.
 - **Einladung als E-Mail** (`.eml`): versandfertige Datei im Layout der PDF-Einladung (HTML mit
   Briefkopf, Logo und Akzentfarbe; dazu eine reine Textfassung für Programme ohne HTML) mit den aktiven BR-Mitgliedern
   als Empfänger (aus deren E-Mail-Adressen) sowie der als Gast geladenen SBV und JAV.
@@ -126,7 +130,7 @@ Anwesenheitsliste, Niederschrift) nach den einschlägigen Vorschriften des BetrV
   „Vergangene aufräumen“ entfernt abgelaufene Zeiträume.
 - **Erinnerungen:** Je Termin lässt sich ein Vorlauf wählen (keine Erinnerung, am selben
   Tag, 1 Tag, 3 Tage, 1 Woche – Standard –, 2 Wochen vorher). Fällige Termine zeigt die
-  **Glocke** in der Kopfzeile der Seitenleiste des Sitzungsmanagers mit Zähler; die Liste
+  **Glocke** unten rechts im Fenster des Sitzungsmanagers mit Zähler; die Liste
   trennt „Fällig“ und „Demnächst“ (die nächsten 30 Tage). Nach „Datei laden“ und Passwort
   weist ein Hinweis auf fällige Erinnerungen hin (nicht beim bloßen Neuladen der Seite).
   „Gelesen“ gilt **pro Browser** und wird nicht in der Sicherung gespeichert. Erinnert wird
@@ -151,6 +155,10 @@ Anwesenheitsliste, Niederschrift) nach den einschlägigen Vorschriften des BetrV
 - **Eigenes Erscheinungsbild** je Gremium (Admin-Menü → „Erscheinungsbild“): Akzentfarbe
   für App, PDFs und Präsentation (Varianten werden abgeleitet, der Kontrast bleibt gewahrt),
   Name und Untertitel der Anwendung sowie das Logo in der Seitenleiste.
+- **Pausenscreen in der Präsentation** (optional; Admin-Menü → „Tagesordnung“): Option aktivieren und die Datei
+  `Pausenscreen.html` aus dem Programmordner wählen (nach Änderungen erneut wählen). Die Präsentation zeigt dann
+  einen Knopf „Pause“ (Taste P); P/Esc oder „Pause beenden“ schließt sie. Der Inhalt liegt in den Stammdaten
+  (Browser lassen eine Präsentation keine Dateien nachladen) und läuft in einem abgeschotteten Rahmen.
 - **Beschluss-Tags**: farbige Schlagworte, im Admin-Menü konfigurierbar, je
   Beschluss zuweisbar, in der Beschluss-Übersicht filterbar und im Export.
 - **Dokument-Ordner**: das Dokumente-Panel gruppiert je Sitzung in Ordnern;
