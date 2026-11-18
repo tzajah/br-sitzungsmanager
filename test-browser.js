@@ -602,7 +602,9 @@ async function pruefeUebergabe() {
   assert.deepStrictEqual(erg.felder, ['beginnTatsaechlich', 'datum', 'endeTatsaechlich', 'nr', 'punkte', 'sitzungId', 'teilnahme', 'vollstaendig']);
   assert.strictEqual(erg.nutzlast.vollstaendig, true);
   assert.ok(erg.nutzlast.punkte.length > 1, 'alle Punkte, auch ohne Inhalt');
-  assert.ok(!erg.roh.includes('Geplanter TOP'), 'keine Tagesordnung im Rückweg');
+  /* Tagesordnungsfelder reisen mit (für im Protokoll neu angelegte Punkte); bekannte Punkte übernimmt der Manager daraus nicht. */
+  assert.strictEqual(erg.nutzlast.punkte[0].tagesordnung.titel, 'Geplanter TOP', 'Tagesordnungsfelder nur je Punkt');
+  assert.ok(!erg.nutzlast.punkte.some(p => 'anlagen' in p.tagesordnung), 'Anlagen reisen nicht zurück');
   assert.ok(!erg.roh.includes('Schon protokolliert'), 'kein Verlauf im Rückweg – der bleibt im Protokoll');
   assert.ok(erg.roh.includes('Der BR beschliesst X.') && erg.roh.includes('Schreiben aufsetzen'));
 
@@ -2166,6 +2168,139 @@ async function pruefeUnterpunktKategorieBeteiligungBeginn() {
   console.log('OK  Unterpunkt-Kategorie, Beteiligung je Beschluss, tatsächlicher Sitzungsbeginn');
 }
 
+/* Abweichung von der Einladung: Erfassung, Etikett, Präsentation, Einladung unverändert, Protokoll blendet aus */
+async function pruefeAbweichung() {
+  const browser = await chromium.launch();
+  const fehler = [];
+  const sm = await browser.newPage();
+  sm.on('pageerror', e => fehler.push(e.message));
+  await sm.goto(DATEI('BR-Sitzungsmanager.html'));
+  await sm.waitForFunction('typeof APP_MODUS !== "undefined"', null, { timeout: 5000 });
+  await sm.evaluate(AUFBAU);
+  const erg = await sm.evaluate(`
+    (async () => {
+      const s = daten.sitzungen[0];
+      s.tops.push(neuerTop({ titel: 'Zusatzpunkt', unterpunkte: [neuerUnterpunkt({ titel: 'Teil' })] }));
+      s.tops.push(neuerTop({ titel: 'Entfällt' }));
+      const ohneAbw = { eml: erzeugeEinladungEml(daten, s), text: einladungVolltext(daten, s),
+                        pdf: (await erzeugeEinladungPdf(daten, s, {})).length };
+      const c = document.createElement('div');
+      document.body.appendChild(c);
+      renderTabTagesordnung(c, s);
+      const kopf = c.querySelectorAll('.top-eintrag')[1].querySelector('.top-kopf');
+      const art = kopf.querySelector('[data-abw-art]');
+      const artVorher = art.hidden;
+      const cb = kopf.querySelector('[data-abw]');
+      cb.checked = true; cb.dispatchEvent(new Event('change'));
+      const nachHaken = s.tops[1].abweichung;
+      const etikettNeu = kopf.querySelector('[data-abw-etikett]').textContent;
+      const ukopf = c.querySelectorAll('.top-eintrag')[1].querySelector('.up-kopf');
+      const ucb = ukopf.querySelector('[data-abw]');
+      ucb.checked = true; ucb.dispatchEvent(new Event('change'));
+      const uart = ukopf.querySelector('[data-abw-art]');
+      uart.value = 'geaendert'; uart.dispatchEvent(new Event('change'));
+      const kopf3 = c.querySelectorAll('.top-eintrag')[2].querySelector('.top-kopf');
+      const cb3 = kopf3.querySelector('[data-abw]');
+      cb3.checked = true; cb3.dispatchEvent(new Event('change'));
+      const art3 = kopf3.querySelector('[data-abw-art]');
+      art3.value = 'abgesetzt'; art3.dispatchEvent(new Event('change'));
+      const durch = kopf3.querySelector('.top-titel-eingabe').style.textDecoration;
+      const etikettAb = kopf3.querySelector('[data-abw-etikett]').textContent;
+      /* Abhaken setzt zurück, Haken wieder setzen startet mit „neu“ */
+      cb.checked = false; cb.dispatchEvent(new Event('change'));
+      const abgehakt = s.tops[1].abweichung;
+      const etikettWeg = !kopf.querySelector('[data-abw-etikett]');
+      cb.checked = true; cb.dispatchEvent(new Event('change'));
+
+      sitzungsRolle = 'viewer';
+      const lese = document.createElement('div');
+      renderTabTagesordnung(lese, s);
+      const leseGesperrt = lese.querySelector('[data-abw]').disabled && lese.querySelector('[data-abw-art]').disabled;
+      sitzungsRolle = 'arbeit';
+
+      const praes = praesentationHtml(daten, s);
+      const mitAbw = { eml: erzeugeEinladungEml(daten, s), text: einladungVolltext(daten, s),
+                       pdf: (await erzeugeEinladungPdf(daten, s, {})).length };
+      const prot = (await erzeugeProtokollPdf(daten, s, {})).length;
+      return { artVorher, nachHaken, etikettNeu, uabw: s.tops[1].unterpunkte[0].abweichung, durch, etikettAb,
+               abgehakt, etikettWeg, ende: s.tops.map(t => t.abweichung || ''), leseGesperrt, praes, ohneAbw, mitAbw, prot };
+    })()
+  `);
+  assert.strictEqual(erg.artVorher, true, 'ohne Haken keine Auswahl der Art');
+  assert.strictEqual(erg.nachHaken, 'neu', 'Haken setzt Standard „neu“');
+  assert.strictEqual(erg.etikettNeu, 'NEU AUFGENOMMEN', 'Etikett hinter dem Titel');
+  assert.strictEqual(erg.uabw, 'geaendert', 'Unterpunkt eigene Abweichung');
+  assert.strictEqual(erg.durch, 'line-through', 'abgesetzter Titel durchgestrichen');
+  assert.strictEqual(erg.etikettAb, 'ABGESETZT');
+  assert.strictEqual(erg.abgehakt, '', 'Abhaken leert die Abweichung');
+  assert.ok(erg.etikettWeg, 'und entfernt das Etikett');
+  assert.deepStrictEqual(erg.ende, ['', 'neu', 'abgesetzt']);
+  assert.ok(erg.leseGesperrt, 'ohne Bearbeitungsrecht nicht bedienbar');
+  assert.ok(erg.praes.includes('NEU AUFGENOMMEN') && erg.praes.includes('GEÄNDERT'), 'Präsentation zeigt Etiketten');
+  assert.strictEqual((erg.praes.match(/<section class="folie/g) || []).length, 3, 'Übersicht + 2 TOP-Folien, abgesetzter TOP ohne Folie');
+  assert.ok(erg.praes.includes('<s>Entfällt</s>'), 'abgesetzter TOP auf der Übersicht durchgestrichen');
+  assert.ok(!/TOP 3<\/div>/.test(erg.praes), 'keine Folie „TOP 3“');
+  const emlKlar = mimeTeile(erg.mitAbw.eml).map(t => t.inhalt.toString('utf8')).join('\n');
+  for (const [k, inhalt] of [['eml', emlKlar], ['text', erg.mitAbw.text]]) {
+    assert.ok(!/abweichend|abgesetzt|neu aufgenommen|geändert/i.test(inhalt), 'Einladung (' + k + ') ohne Kennzeichnung');
+    assert.ok(inhalt.includes('Entfällt'), 'abgesetzter TOP bleibt in der Einladung (' + k + ')');
+  }
+  assert.strictEqual(erg.mitAbw.eml.length, erg.ohneAbw.eml.length, 'Einladungs-Mail unverändert');
+  assert.strictEqual(erg.mitAbw.text, erg.ohneAbw.text, 'Einladungstext unverändert');
+  assert.strictEqual(erg.mitAbw.pdf, erg.ohneAbw.pdf, 'Einladungs-PDF unverändert');
+  assert.ok(erg.prot > 1000, 'Niederschrift mit Abweichungen entsteht');
+
+  /* Rückfrage nennt im Protokoll neu angelegte Punkte, ohne „unbekannt"-Warnung */
+  const dialog = await sm.evaluate(`
+    (() => {
+      const s = daten.sitzungen[0];
+      const p = JSON.parse(JSON.stringify(s));
+      p.tops.push(neuerTop({ titel: 'Im Protokoll ergänzt', abweichung: 'neu' }));
+      ergebnisseRueckfrage(ergebnisNutzlast(p), 'Vermerk.');
+      const text = document.getElementById('dlgBestaetigen').textContent;
+      document.getElementById('dlgBestaetigen').close();
+      return text;
+    })()
+  `);
+  assert.ok(dialog.includes('Neu in der Tagesordnung: TOP 4 Im Protokoll ergänzt.'), 'Rückfrage nennt den neuen TOP');
+  assert.ok(!dialog.includes('gibt es hier nicht mehr'), 'keine Verlust-Warnung für neue Punkte');
+
+  const pm = await browser.newPage();
+  pm.on('pageerror', e => fehler.push(e.message));
+  await pm.goto(DATEI('BR-Protokoll.html'));
+  await pm.waitForFunction('typeof APP_MODUS !== "undefined"', null, { timeout: 5000 });
+  await pm.evaluate(AUFBAU);
+  const p = await pm.evaluate(`
+    (() => {
+      const s = daten.sitzungen[0];
+      s.tops[0].verlauf = '<p>Bleibt erhalten</p>';
+      s.tops[0].abweichung = 'abgesetzt';
+      s.tops.push(neuerTop({ titel: 'Zwei', abweichung: 'neu', unterpunkte: [neuerUnterpunkt({ titel: 'U', abweichung: 'abgesetzt' }), neuerUnterpunkt({ titel: 'V' })] }));
+      const c = document.createElement('div');
+      document.body.appendChild(c);
+      renderTabProtokoll(c, s);
+      const [t1, t2] = c.querySelectorAll('#protTops > .top-eintrag');
+      const u = t2.querySelectorAll('.unterpunkt-prot');
+      return {
+        t1Kern: !!t1.querySelector('[data-kern]'), t1Hinweis: (t1.querySelector('[data-abgesetzt]') || {}).textContent,
+        t1Durch: !!t1.querySelector('.top-kopf s'), t1Etikett: t1.querySelector('[data-abw-etikett]').textContent,
+        t2Kern: !!t2.querySelector(':scope > .top-koerper > [data-kern]'), t2Etikett: t2.querySelector('.top-kopf [data-abw-etikett]').textContent,
+        u1Kern: !!u[0].querySelector('[data-kern]'), u1Hinweis: !!u[0].querySelector('[data-abgesetzt]'), u2Kern: !!u[1].querySelector('[data-kern]'),
+        verlauf: s.tops[0].verlauf, fortschritt: protokollFortschritt(s)
+      };
+    })()
+  `);
+  assert.ok(!p.t1Kern && p.t1Hinweis.startsWith('Abgesetzt – kein Protokollinhalt'), 'abgesetzter TOP ohne Eingaben, mit Hinweis');
+  assert.ok(p.t1Durch && p.t1Etikett === 'ABGESETZT', 'Titel durchgestrichen, Etikett');
+  assert.ok(p.t2Kern && p.t2Etikett === 'NEU AUFGENOMMEN', 'neuer TOP normal bearbeitbar, mit Etikett');
+  assert.ok(!p.u1Kern && p.u1Hinweis && p.u2Kern, 'abgesetzter Unterpunkt ohne Eingaben, Geschwister normal');
+  assert.strictEqual(p.verlauf, '<p>Bleibt erhalten</p>', 'Inhalt wird nicht gelöscht');
+  assert.strictEqual(p.fortschritt.erledigt, 2, 'abgesetzte Punkte zählen als erledigt');
+  assert.deepStrictEqual(fehler, [], 'keine Laufzeitfehler');
+  await browser.close();
+  console.log('OK  Abweichung von der Einladung: Erfassung, Etikett, Präsentation, Einladung unverändert, Protokoll');
+}
+
 /* Einladungs-Mail: multipart/alternative mit Text- und HTML-Teil im Layout des PDFs, Logo per Content-ID */
 function mimeTeile(roh) {
   const kopfEnde = roh.indexOf('\r\n\r\n');
@@ -3665,6 +3800,7 @@ async function pruefePausenscreen() {
   await pruefeAufraeumen();
   await pruefeFormatgleichheit();
   await pruefeUnterpunktKategorieBeteiligungBeginn();
+  await pruefeAbweichung();
   await pruefeAdminMenue();
   await pruefeEinladungsMail();
   await pruefeAnmeldung();

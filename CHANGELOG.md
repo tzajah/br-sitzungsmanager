@@ -8,6 +8,16 @@ veröffentlichten Releases).
 ## [Unreleased]
 
 ### Hinzugefügt
+- **Abweichungen von der Einladung kennzeichnen.** In der Tagesordnung beider Module lässt sich
+  je TOP und Unterpunkt „Weicht von der Einladung ab“ anhaken und die Art wählen (neu
+  aufgenommen, geändert, verschoben, abgesetzt). Ein Etikett erscheint in Tagesordnung,
+  Protokoll, Präsentation und Protokoll-PDF (samt Sammelsatz, im Gast-Auszug nur für
+  freigegebene Punkte); die Einladung bleibt unverändert. Abgesetzte Punkte sind
+  durchgestrichen, haben keine eigene Folie und keine Protokoll-Eingaben.
+- **Neue TOPs reisen aus dem Protokoll zurück.** „Ergebnisse übernehmen“ fügt im
+  Protokollmodul neu angelegte TOPs und Unterpunkte samt Ergebnissen an passender Stelle im
+  Sitzungsmanager ein, statt deren Ergebnisse zu verwerfen. Abweichende Zuordnungen
+  (Unterpunkt im Protokoll unter anderem TOP) nennt die Rückfrage ausdrücklich.
 - **Beschlüsse und Aufgaben nachtragen (nur Admin).** In den Übersichten „Beschlüsse“ und
   „Aufgaben“ trägt der Admin über „+ Nachtragen“ Altbestand an einem TOP oder Unterpunkt
   einer bestehenden Sitzung ein. Die Beschlussnummer ist vorbelegt und überschreibbar,

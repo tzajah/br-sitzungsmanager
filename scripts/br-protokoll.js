@@ -176,14 +176,17 @@ function protokollTopBlock(s, top, i, updater) {
   wrap.setAttribute('data-tocanker', 'top-' + i);
   wrap.innerHTML =
     '<div class="top-kopf"><span class="top-nr">TOP ' + (i + 1) + '</span>' +
-    '<span style="flex:1;font-weight:650;padding:4px 8px">' + esc(top.titel || '(ohne Titel)') + '</span>' +
+    '<span style="flex:1;font-weight:650;padding:4px 8px">' + abgesetztTitelHtml(top) + '</span>' +
     topBadgesHtml(top) +
     '<span class="klein-grau">' + esc(KATEGORIEN[top.kategorie] || '') + '</span>' +
     klappButtonHtml(top) + '</div>' +
-    '<div class="top-koerper"><div class="punkt-kern" data-kern>' + punktKernHtml('Verlauf / Ergebnis der Beratung') + '</div>' +
-    '<div class="unterpunkte-prot" data-upprot></div></div>';
+    '<div class="top-koerper">' + (istAbgesetzt(top) ? ABGESETZT_HINWEIS :
+      '<div class="punkt-kern" data-kern>' + punktKernHtml('Verlauf / Ergebnis der Beratung') + '</div>' +
+      '<div class="unterpunkte-prot" data-upprot></div>') + '</div>';
 
   klappVerdrahten(wrap, top);
+  /* Abgesetzt: Eingaben nur ausgeblendet – vorhandene Inhalte bleiben im Datenstand, falls der Haken wieder fällt. */
+  if (istAbgesetzt(top)) return wrap;
   bestueckePunkt(wrap.querySelector('[data-kern]'), s, top, updater);
 
   const upBox = wrap.querySelector('[data-upprot]');
@@ -194,13 +197,19 @@ function protokollTopBlock(s, top, i, updater) {
     sub.setAttribute('data-upanker', u.id || '');
     sub.innerHTML =
       '<div class="up-kopf"><span class="top-nr">' + (i + 1) + '.' + (j + 1) + '</span>' +
-      '<span style="flex:1;font-weight:600;padding:4px 8px">' + esc(u.titel || '(ohne Titel)') + '</span>' +
+      '<span style="flex:1;font-weight:600;padding:4px 8px">' + abgesetztTitelHtml(u) + '</span>' +
       '<span class="klein-grau">' + esc(kategorieText(u)) + '</span></div>' +
-      '<div class="punkt-kern" data-kern>' + punktKernHtml('Verlauf / Ergebnis') + '</div>';
+      (istAbgesetzt(u) ? ABGESETZT_HINWEIS : '<div class="punkt-kern" data-kern>' + punktKernHtml('Verlauf / Ergebnis') + '</div>');
     upBox.appendChild(sub);
-    bestueckePunkt(sub.querySelector('[data-kern]'), s, u, updater);
+    if (!istAbgesetzt(u)) bestueckePunkt(sub.querySelector('[data-kern]'), s, u, updater);
   });
   return wrap;
+}
+
+const ABGESETZT_HINWEIS = '<p class="klein-grau" data-abgesetzt>Abgesetzt – kein Protokollinhalt.</p>';
+function abgesetztTitelHtml(p) {
+  const t = esc(p.titel || '(ohne Titel)');
+  return (istAbgesetzt(p) ? '<s>' + t + '</s>' : t) + ' ' + abweichungEtikettHtml(p);
 }
 
 function punktKernHtml(verlaufLabel) {

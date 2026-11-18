@@ -84,6 +84,29 @@ function renderAnlagenWidget(c, liste, beschriftung, nachAenderung) {
 
 /* Reiter „Tagesordnung" */
 
+/* Abweichung von der Einladung: Etikett hinter dem Titel, Haken + Art im Kopf von TOP und Unterpunkt. */
+function abweichungFeldHtml() {
+  return '<span data-abw-platz></span>' +
+    '<span class="abw-wahl"><label><input type="checkbox" data-abw> Weicht von der Einladung ab</label>' +
+    '<select class="eingabe" data-abw-art aria-label="Art der Abweichung">' +
+    Object.keys(ABWEICHUNG).map(k => '<option value="' + k + '">' + esc(ABWEICHUNG[k]) + '</option>').join('') +
+    '</select></span>';
+}
+function abweichungVerdrahten(kopf, punkt) {
+  const cb = kopf.querySelector('[data-abw]'), art = kopf.querySelector('[data-abw-art]');
+  const titel = kopf.querySelector('.top-titel-eingabe');
+  const zeige = () => {
+    art.hidden = !punkt.abweichung;
+    art.value = punkt.abweichung || 'neu';
+    kopf.querySelector('[data-abw-platz]').innerHTML = abweichungEtikettHtml(punkt);
+    titel.style.textDecoration = istAbgesetzt(punkt) ? 'line-through' : '';
+  };
+  zeige();
+  bindePruef(cb, () => punkt.abweichung, v => { punkt.abweichung = v ? art.value : ''; }, zeige);
+  art.disabled = !darfBearbeiten();
+  art.onchange = () => { if (!darfBearbeiten()) return zeige(); punkt.abweichung = art.value; speichern(); zeige(); };
+}
+
 function renderTabTagesordnung(c, s) {
   c.innerHTML =
     '<div class="karte"><div class="karte-kopf"><h3>Tagesordnung zur Einladung</h3>' +
@@ -120,6 +143,7 @@ function topEditor(s, top, i) {
   wrap.innerHTML =
     '<div class="top-kopf"><span class="top-nr">TOP ' + (i + 1) + '</span>' +
     '<input class="top-titel-eingabe" placeholder="Titel des Tagesordnungspunkts" aria-label="Titel TOP ' + (i + 1) + '">' +
+    abweichungFeldHtml() +
     '<div class="top-werkzeuge">' +
     klappButtonHtml(top) +
     '<button class="btn btn-symbol btn-geist" data-tu="hoch" title="Nach oben"><svg class="ic"><use href="#ic-hoch"/></svg></button>' +
@@ -138,6 +162,7 @@ function topEditor(s, top, i) {
 
   const titel = wrap.querySelector('.top-titel-eingabe');
   bindeText(titel, () => top.titel, v => { top.titel = v; });
+  abweichungVerdrahten(wrap.querySelector('.top-kopf'), top);
   const kat = wrap.querySelector('[data-f="kategorie"]');
   kat.value = kategorieOderLeer(top.kategorie);
   kat.onchange = () => { top.kategorie = kat.value; speichern(); };
@@ -184,6 +209,7 @@ function renderUnterpunkteEditor(container, s, top, i) {
       z.innerHTML =
         '<div class="up-kopf"><span class="top-nr">' + nr + '</span>' +
         '<input class="top-titel-eingabe" data-f="titel" placeholder="Titel des Unterpunkts">' +
+        abweichungFeldHtml() +
         '<div class="up-werkzeuge">' +
         '<button class="btn btn-symbol btn-geist" data-tu="hoch" title="Nach oben"><svg class="ic"><use href="#ic-hoch"/></svg></button>' +
         '<button class="btn btn-symbol btn-geist" data-tu="runter" title="Nach unten"><svg class="ic"><use href="#ic-runter"/></svg></button>' +
@@ -194,6 +220,7 @@ function renderUnterpunkteEditor(container, s, top, i) {
         '<div class="anlagen-bereich" data-anlagen></div>';
       box.appendChild(z);
       bindeText(z.querySelector('[data-f="titel"]'), () => u.titel, v => { u.titel = v; });
+      abweichungVerdrahten(z.querySelector('.up-kopf'), u);
       const ukat = z.querySelector('[data-f="kategorie"]');
       ukat.value = kategorieOderLeer(u.kategorie);
       ukat.onchange = () => { u.kategorie = ukat.value; speichern(); };

@@ -897,14 +897,18 @@ function ergebnisseRueckfrage(p, vermerk) {
   const gepflegt = ent.beschluesse.some(b => b.status && b.status !== 'in_arbeit') ||
                    ent.aufgaben.some(a => a.status === 'erledigt');
   if (gepflegt) teile.push('ACHTUNG: Darunter sind Einträge mit bereits gepflegtem Umsetzungsstatus.');
+  if (bilanz.neu.length) teile.push('Neu in der Tagesordnung: ' + bilanz.neu.join(', ') + '.');
   if (!p.vollstaendig) teile.push('Hinweis: ältere Protokollversion – geleerte Punkte werden nicht erkannt.');
   if (bilanz.unbekannt.length) {
     teile.push('ACHTUNG: ' + bilanz.unbekannt.length + ' Punkt(e) aus der Datei gibt es hier nicht mehr – deren Ergebnisse gehen verloren.');
   }
+  if (bilanz.konflikte.length) {
+    teile.push('ACHTUNG: Abweichende Zuordnung (Ergebnisse werden am lokalen Punkt übernommen): ' + bilanz.konflikte.join('; ') + '.');
+  }
   teile.push('Die Teilnahme wird mit übernommen, damit die Beschluss-Übersicht richtig auswertet.');
   teile.push(vermerk);
   bestaetigen('Ergebnisse übernehmen?', teile.join(' '),
-    () => ergebnisseUebernehmen(p), 'Übernehmen', bilanz.unbekannt.length > 0 || gepflegt);
+    () => ergebnisseUebernehmen(p), 'Übernehmen', bilanz.unbekannt.length > 0 || bilanz.konflikte.length > 0 || gepflegt);
 }
 
 async function ergebnisseUebernehmen(p) {

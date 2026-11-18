@@ -57,6 +57,18 @@ Anwesenheitsliste, Niederschrift) nach den einschlägigen Vorschriften des BetrV
   **Unterpunkten** (2.1, 2.2 …) – jeder Unterpunkt kann eine eigene Kategorie,
   eigene Beschlüsse, Aufgaben **und Anlagen** tragen. Die Kategorie ist optional
   („– ohne –"); ein neuer Unterpunkt übernimmt zunächst die Kategorie seines TOP.
+- **Abweichung von der Einladung**: Im Reiter „Tagesordnung" (beide Module) lässt sich jeder TOP und
+  Unterpunkt per Haken „Weicht von der Einladung ab" kennzeichnen – Art: neu aufgenommen (Standard),
+  geändert, verschoben oder abgesetzt. Ein Etikett hinter dem Titel zeigt sie in Tagesordnung, Protokoll
+  und Präsentation; abgesetzte Punkte sind durchgestrichen, haben in der Präsentation keine eigene Folie
+  und im Protokollmodul keine Eingabefelder (vorhandene Inhalte bleiben gespeichert) und zählen im
+  Fortschritt als erledigt. Die Niederschrift nennt die Art hinter dem Titel, lässt bei abgesetzten Punkten
+  den Inhalt weg und fasst vor den TOPs zusammen: „Die Tagesordnung weicht in folgenden Punkten von der
+  Einladung ab: …". Die Einladung (PDF/E-Mail) bleibt unverändert; die Nummerierung folgt der aktuellen
+  Reihenfolge. Bei der **Ergebnisübergabe** zurück in den Sitzungsmanager reist die Abweichung mit; im
+  Protokoll **neu angelegte** TOPs/Unterpunkte werden samt Tagesordnungsfeldern (ohne Anlagen) an der
+  entsprechenden Stelle eingefügt und vorher in der Rückfrage genannt. Titeländerungen oder Umsortierungen
+  bekannter Punkte werden nicht zurückgespielt.
 - **Einladung** (nur Sitzungsmanager): die **geplante Anwesenheit** vor der Sitzung –
   Status je Mitglied, „Vertreten durch" für das geladene Ersatzmitglied und eine
   Vorschau der Beschlussfähigkeit. Sie füllt dasselbe Feld wie das Protokollmodul,

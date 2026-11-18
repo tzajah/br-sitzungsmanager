@@ -454,7 +454,10 @@ input.eingabe,select.eingabe,textarea.eingabe{
   color:var(--tinte-weich);font-weight:600;margin-bottom:calc(var(--takt) * 1.5)}
 .unterpunkt-zeile{border:1px solid var(--linie);padding:calc(var(--takt) * 2) calc(var(--takt) * 2.5);
   margin-top:calc(var(--takt) * 2);background:var(--papier)}
-.up-kopf{display:flex;align-items:center;gap:calc(var(--takt) * 2.5);margin-bottom:calc(var(--takt) * 1.5)}
+.up-kopf{display:flex;align-items:center;gap:calc(var(--takt) * 2.5);margin-bottom:calc(var(--takt) * 1.5);flex-wrap:wrap}
+/* Abweichung von der Einladung (abweichungVerdrahten in br-tagesordnung.js) */
+.abw-wahl{display:inline-flex;align-items:center;gap:var(--takt);font-size:12px;color:var(--grau);white-space:nowrap;flex:none}
+.abw-wahl select.eingabe{width:auto;padding:2px calc(var(--takt) * 1.5);font-size:12.5px}
 .up-werkzeuge{display:flex;gap:var(--takt);flex:none}
 .tn-teilweise{display:flex;align-items:center;gap:var(--takt);font-size:.9em}
 .tn-topwahl{display:flex;flex-wrap:wrap;gap:var(--takt) calc(var(--takt) * 3);margin-top:var(--takt)}

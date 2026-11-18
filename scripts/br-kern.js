@@ -56,12 +56,44 @@ function tagesordnungNutzlast(s) {
   return { sitzung: sitzung };
 }
 
+/* Abweichung von der Einladung je TOP/Unterpunkt ('' = keine); gehört zur Tagesordnung, nicht zu PROTOKOLL_FELDER. */
+const ABWEICHUNG = { neu: 'neu aufgenommen', geaendert: 'geändert', verschoben: 'verschoben', abgesetzt: 'abgesetzt' };
+function abweichungLabel(p) { return (p && ABWEICHUNG[p.abweichung]) || ''; }
+function istAbgesetzt(p) { return !!p && p.abweichung === 'abgesetzt'; }
+function abweichungEtikettHtml(p, klasse) {
+  const l = abweichungLabel(p);
+  return l ? '<span class="' + (klasse || 'top-badge') + '" data-abw-etikett>' + esc(l.toUpperCase()) + '</span>' : '';
+}
+function abweichungTitelZusatz(p) {
+  const l = abweichungLabel(p);
+  return !l ? '' : istAbgesetzt(p) ? ' – abgesetzt' : ' (' + l + ' – abweichend von der Einladung)';
+}
+function abweichungenText(s, gast) {
+  const teile = [];
+  /* Gast-Auszug: nur freigegebene Punkte, Originalnummern. */
+  const frei = gast ? new Map(gastTops(s, gast).map(x => [x.top, x])) : null;
+  ((s && s.tops) || []).forEach((t, i) => {
+    const g = frei && frei.get(t);
+    if (frei && !g) return;
+    if (abweichungLabel(t)) teile.push('TOP ' + (i + 1) + ' (' + abweichungLabel(t) + ')');
+    (t.unterpunkte || []).forEach((u, j) => {
+      if (g && !g.voll && !g.unterpunkte.some(x => x.u === u)) return;
+      if (abweichungLabel(u)) teile.push('TOP ' + (i + 1) + '.' + (j + 1) + ' (' + abweichungLabel(u) + ')');
+    });
+  });
+  return teile.length ? 'Die Tagesordnung weicht in folgenden Punkten von der Einladung ab: ' + teile.join(', ') + '.' : '';
+}
+
 function ergebnisNutzlast(s) {
   const punkte = [];
-  const sammle = p => {
-    punkte.push({ id: p.id, beschluesse: p.beschluesse || [], aufgaben: p.aufgaben || [] });
+  /* Tagesordnungsfelder (ohne Anlagen) reisen mit, damit der Sitzungsmanager im Protokoll neu angelegte Punkte aufnehmen kann. */
+  const sammle = (p, eltern) => {
+    const to = punktOhneProtokoll(p);
+    delete to.anlagen; delete to.id;
+    punkte.push(Object.assign({ id: p.id, abweichung: p.abweichung || '', beschluesse: p.beschluesse || [], aufgaben: p.aufgaben || [],
+      tagesordnung: to }, eltern ? { eltern: eltern } : {}));
   };
-  (s.tops || []).forEach(t => { sammle(t); (t.unterpunkte || []).forEach(sammle); });
+  (s.tops || []).forEach(t => { sammle(t); (t.unterpunkte || []).forEach(u => sammle(u, t.id)); });
   return {
     sitzungId: s.id, nr: s.nr, datum: s.datum,
     vollstaendig: true,   /* alle Punkte, auch geleerte; ältere Dateien ohne Flag listen nur Punkte mit Inhalt */
@@ -132,15 +164,39 @@ function ergebnisListeMischen(lokal, datei, entfallen) {
 }
 
 function ergebnisseEinspielen(sitzung, nutzlast) {
-  const bilanz = { punkte: 0, beschluesse: 0, aufgaben: 0, unbekannt: [], entfallen: { beschluesse: [], aufgaben: [] } };
-  const punkte = new Map();
-  (sitzung.tops || []).forEach(t => {
+  const bilanz = { punkte: 0, beschluesse: 0, aufgaben: 0, unbekannt: [], konflikte: [], neu: [], entfallen: { beschluesse: [], aufgaben: [] } };
+  const punkte = new Map(), elternVon = new Map();
+  sitzung.tops = sitzung.tops || [];
+  sitzung.tops.forEach(t => {
     punkte.set(t.id, t);
-    (t.unterpunkte || []).forEach(u => punkte.set(u.id, u));
+    (t.unterpunkte || []).forEach(u => { punkte.set(u.id, u); elternVon.set(u.id, t.id); });
   });
+  /* Im Protokoll neu angelegte Punkte (nur Dateien mit „tagesordnung") an der Protokoll-Position einfügen:
+     neuer TOP hinter den zuletzt gesehenen TOP, neuer Unterpunkt hinter den zuletzt gesehenen Geschwisterpunkt. */
+  const neuePunkte = [], konfliktIds = [];
+  let letzterTop = null, letzterUp = null;
   for (const e of (nutzlast.punkte || [])) {
-    const ziel = punkte.get(e.id);
+    let ziel = punkte.get(e.id);
+    if (!ziel && e.tagesordnung) {
+      const felder = Object.assign({}, e.tagesordnung, { id: e.id, anlagen: [], beschluesse: [], aufgaben: [] });
+      if (!e.eltern) {
+        ziel = neuerTop(Object.assign(felder, { unterpunkte: [] }));
+        sitzung.tops.splice(letzterTop ? sitzung.tops.indexOf(letzterTop) + 1 : 0, 0, ziel);
+      } else {
+        const eltern = punkte.get(e.eltern);
+        if (eltern && sitzung.tops.includes(eltern)) {
+          const liste = eltern.unterpunkte || (eltern.unterpunkte = []);
+          ziel = neuerUnterpunkt(felder);
+          liste.splice(liste.indexOf(letzterUp) + 1, 0, ziel);   /* -1 + 1 = Anfang, wenn kein Geschwister davor */
+        }
+      }
+      if (ziel) { punkte.set(e.id, ziel); neuePunkte.push(ziel); }
+    }
     if (!ziel) { bilanz.unbekannt.push(e.id); continue; }
+    /* Nur Dateien mit „tagesordnung" kennen die Zuordnung; die lokale Struktur bleibt maßgeblich, der Konflikt wird gemeldet. */
+    if (e.tagesordnung && !neuePunkte.includes(ziel) && (e.eltern || null) !== (elternVon.get(e.id) || null)) konfliktIds.push(e.id);
+    if (sitzung.tops.includes(ziel)) { letzterTop = ziel; letzterUp = null; } else letzterUp = ziel;
+    if (e.abweichung !== undefined) ziel.abweichung = e.abweichung;
     ziel.beschluesse = ergebnisListeMischen(ziel.beschluesse, e.beschluesse, bilanz.entfallen.beschluesse);
     ziel.aufgaben = ergebnisListeMischen(ziel.aufgaben, e.aufgaben, bilanz.entfallen.aufgaben);
     bilanz.punkte++;
@@ -165,6 +221,21 @@ function ergebnisseEinspielen(sitzung, nutzlast) {
   /* Nur mit vollstaendig ist leer = geleert; ältere Dateien können „geleert" nicht von „nie gesetzt" unterscheiden. */
   if (nutzlast.vollstaendig || nutzlast.beginnTatsaechlich) sitzung.beginnTatsaechlich = nutzlast.beginnTatsaechlich || '';
   if (nutzlast.vollstaendig || nutzlast.endeTatsaechlich) sitzung.endeTatsaechlich = nutzlast.endeTatsaechlich || '';
+  /* Nummern erst nach allen Einfügungen vergeben – sie gelten für die neue Reihenfolge. */
+  for (const id of konfliktIds) {
+    const p = punkte.get(id);
+    sitzung.tops.forEach((t, i) => {
+      const j = (t.unterpunkte || []).indexOf(p);
+      if (t === p || j >= 0) bilanz.konflikte.push('TOP ' + (i + 1) + (j >= 0 ? '.' + (j + 1) : '') + ' ' + (p.titel || '(ohne Titel)') + ': im Protokoll unter anderem TOP');
+    });
+  }
+  for (const p of neuePunkte) {
+    sitzung.tops.forEach((t, i) => {
+      if (t === p) bilanz.neu.push('TOP ' + (i + 1) + ' ' + (p.titel || '(ohne Titel)'));
+      const j = (t.unterpunkte || []).indexOf(p);
+      if (j >= 0) bilanz.neu.push('TOP ' + (i + 1) + '.' + (j + 1) + ' ' + (p.titel || '(ohne Titel)'));
+    });
+  }
   return bilanz;
 }
 function modusHatReiter(id) { return modusReiter().includes(id); }
@@ -966,13 +1037,13 @@ function protokollFortschritt(s) {
     stand.punkte++;
     stand.beschluesse += (p.beschluesse || []).length;
     stand.aufgaben += (p.aufgaben || []).length;
-    if (hatInhalt(p) || auchOhneEigenen) stand.erledigt++;
+    if (hatInhalt(p) || auchOhneEigenen || istAbgesetzt(p)) stand.erledigt++;
     if (p.pauseAktiv) stand.pause = true;
   };
   ((s && s.tops) || []).forEach(t => {
     const unter = t.unterpunkte || [];
     zaehle(t, unter.some(hatInhalt));
-    unter.forEach(u => zaehle(u, false));
+    unter.forEach(u => zaehle(u, istAbgesetzt(t)));   /* abgesetzter TOP: kein Protokollinhalt, auch nicht darunter */
   });
   return stand;
 }
@@ -1943,15 +2014,19 @@ async function erzeugeProtokollPdf(daten, s, opt) {
 
   /* Alle Anlagen der Sitzung werden im Protokoll benannt – die zum Protokoll wie die zur Tagesordnung. */
   const anlProt = anlagenProtokoll(s).concat(anlagenTagesordnung(s));
+  const abwSatz = abweichungenText(s);
+  if (abwSatz) b.absatz(abwSatz, { abstandDanach: 4 });
   (s.tops || []).forEach((top, i) => {
-    b.ueberschrift('TOP ' + (i + 1) + ':  ' + (top.titel || '(ohne Titel)'), 2);
+    b.ueberschrift('TOP ' + (i + 1) + ':  ' + (top.titel || '(ohne Titel)') + abweichungTitelZusatz(top), 2);
+    if (istAbgesetzt(top)) return;
     const teile = [];
     if (top.kategorie) teile.push(KATEGORIEN[top.kategorie] || top.kategorie);
     if (top.referent) teile.push('Referent/in: ' + top.referent);
     if (teile.length) b.absatz(teile.join('   ·   '), { size: 8.5, farbe: b.c.grau, abstandDanach: 4 });
     pdfPunktInhalt(b, daten, s, top);
     (top.unterpunkte || []).forEach((u, j) => {
-      b.ueberschrift((i + 1) + '.' + (j + 1) + '  ' + (u.titel || '(ohne Titel)'), 3);
+      b.ueberschrift((i + 1) + '.' + (j + 1) + '  ' + (u.titel || '(ohne Titel)') + abweichungTitelZusatz(u), 3);
+      if (istAbgesetzt(u)) return;
       if (kategorieText(u)) b.absatz(kategorieText(u), { size: 8.5, farbe: b.c.grau, abstandDanach: 4 });
       pdfPunktInhalt(b, daten, s, u);
     });
@@ -2023,8 +2098,11 @@ async function erzeugeGekuerztesProtokollPdf(daten, s, gast, opt) {
   b.absatz('Dieser Auszug enthält ausschließlich die Punkte, an denen der Gast teilgenommen hat: ' +
     (bezeichnung || '–') + '.', { size: 9.5, farbe: b.c.grau, abstandDanach: 8 });
 
+  const abwGast = abweichungenText(s, gast);
+  if (abwGast) b.absatz(abwGast, { abstandDanach: 4 });
   auswahl.forEach(({ top, nr, voll, unterpunkte }) => {
-    b.ueberschrift('TOP ' + nr + ':  ' + (top.titel || '(ohne Titel)'), 2);
+    b.ueberschrift('TOP ' + nr + ':  ' + (top.titel || '(ohne Titel)') + abweichungTitelZusatz(top), 2);
+    if (istAbgesetzt(top)) return;
     const teile = [];
     if (top.kategorie) teile.push(KATEGORIEN[top.kategorie] || top.kategorie);
     if (top.referent) teile.push('Referent/in: ' + top.referent);
@@ -2032,13 +2110,15 @@ async function erzeugeGekuerztesProtokollPdf(daten, s, gast, opt) {
     if (voll) {
       pdfPunktInhalt(b, daten, s, top);
       (top.unterpunkte || []).forEach((u, j) => {
-        b.ueberschrift(nr + '.' + (j + 1) + '  ' + (u.titel || '(ohne Titel)'), 3);
+        b.ueberschrift(nr + '.' + (j + 1) + '  ' + (u.titel || '(ohne Titel)') + abweichungTitelZusatz(u), 3);
+        if (istAbgesetzt(u)) return;
         if (kategorieText(u)) b.absatz(kategorieText(u), { size: 8.5, farbe: b.c.grau, abstandDanach: 4 });
         pdfPunktInhalt(b, daten, s, u);
       });
     } else {
       unterpunkte.forEach(({ u, unr }) => {
-        b.ueberschrift(unr + '  ' + (u.titel || '(ohne Titel)'), 3);
+        b.ueberschrift(unr + '  ' + (u.titel || '(ohne Titel)') + abweichungTitelZusatz(u), 3);
+        if (istAbgesetzt(u)) return;
         if (kategorieText(u)) b.absatz(kategorieText(u), { size: 8.5, farbe: b.c.grau, abstandDanach: 4 });
         pdfPunktInhalt(b, daten, s, u);
       });

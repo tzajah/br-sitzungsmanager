@@ -263,6 +263,105 @@ console.log('OK  Geplante Anwesenheit und Gästeliste reisen mit, überschreiben
   console.log('OK  Ergebnisübergabe: Status bleibt, geleerte Punkte/Zeiten werden übernommen, alte Dateien schonend');
 }
 
+/* Abweichung von der Einladung: Kennzeichnung, Fortschritt, Satz zur Feststellung, Rückweg neuer Punkte */
+{
+  assert.strictEqual(k.ABWEICHUNG.neu, 'neu aufgenommen');
+  assert.deepStrictEqual(Object.keys(k.ABWEICHUNG), ['neu', 'geaendert', 'verschoben', 'abgesetzt']);
+  assert.ok(!k.PROTOKOLL_FELDER.includes('abweichung'), 'abweichung gehört zur Tagesordnung');
+  const to = k.tagesordnungNutzlast({ id: 's', tops: [{ id: 't', abweichung: 'neu', unterpunkte: [{ id: 'u', abweichung: 'abgesetzt' }] }] });
+  assert.strictEqual(to.sitzung.tops[0].abweichung + '/' + to.sitzung.tops[0].unterpunkte[0].abweichung, 'neu/abgesetzt',
+    'abweichung reist mit der Tagesordnung ins Protokoll');
+
+  const ab = Object.assign({ unterpunkte: [], abweichung: 'abgesetzt' }, leer, { abweichung: 'abgesetzt' });
+  assert.strictEqual(f([ab]).erledigt, 1, 'abgesetzter TOP zählt als erledigt');
+  assert.strictEqual(f([Object.assign({}, leer, { abweichung: 'abgesetzt', unterpunkte: [Object.assign({}, leer)] })]).erledigt, 2,
+    'Unterpunkte eines abgesetzten TOP zählen mit');
+  assert.strictEqual(f([Object.assign({}, leer, { unterpunkte: [Object.assign({}, leer, { abweichung: 'abgesetzt' })] })]).erledigt, 1,
+    'abgesetzter Unterpunkt ist erledigt');
+  assert.strictEqual(f([Object.assign({}, leer, { abweichung: 'neu', unterpunkte: [] })]).erledigt, 0, 'nur abgesetzt zählt');
+
+  assert.strictEqual(k.abweichungenText({ tops: [{ unterpunkte: [] }] }), '', 'ohne Abweichung kein Satz');
+  assert.strictEqual(k.abweichungenText({ tops: [
+    { unterpunkte: [] }, { unterpunkte: [] }, { abweichung: 'neu', unterpunkte: [] },
+    { unterpunkte: [{}, { abweichung: 'geaendert' }] }, { abweichung: 'abgesetzt' }] }),
+    'Die Tagesordnung weicht in folgenden Punkten von der Einladung ab: TOP 3 (neu aufgenommen), TOP 4.2 (geändert), TOP 5 (abgesetzt).');
+  assert.strictEqual(k.abweichungTitelZusatz({ abweichung: 'neu' }), ' (neu aufgenommen – abweichend von der Einladung)');
+  assert.strictEqual(k.abweichungTitelZusatz({ abweichung: 'abgesetzt' }), ' – abgesetzt');
+  assert.strictEqual(k.abweichungTitelZusatz({}), '');
+
+  /* Rückweg: Protokoll mit geänderter Abweichung und neuen Punkten */
+  const manager = () => ({ teilnahme: {}, tops: [
+    { id: 't1', titel: 'Eins', anlagen: [{ id: 'x' }], beschluesse: [], aufgaben: [], unterpunkte: [{ id: 'u1', titel: 'Eins.1', beschluesse: [], aufgaben: [] }] },
+    { id: 't2', titel: 'Zwei', beschluesse: [], aufgaben: [], unterpunkte: [] }
+  ] });
+  const protokoll = manager();
+  protokoll.tops[1].abweichung = 'abgesetzt';
+  protokoll.tops[0].unterpunkte[0].abweichung = 'geaendert';
+  protokoll.tops[0].unterpunkte.push({ id: 'u9', titel: 'Neu unter Eins', abweichung: 'neu', anlagen: [{ id: 'a' }],
+    beschluesse: [{ id: 'bu9', antrag: 'U' }], aufgaben: [], verlauf: '<p>v</p>' });
+  protokoll.tops.splice(1, 0, { id: 'tn', titel: 'Neuer TOP', beschreibung: 'B', kategorie: 'beratung', referent: 'R', dauer: '10',
+    abweichung: 'neu', anlagen: [{ id: 'a2' }], beschluesse: [{ id: 'bn', antrag: 'N' }], aufgaben: [{ id: 'an', was: 'W' }],
+    unterpunkte: [{ id: 'un', titel: 'Neu unter Neu', beschluesse: [{ id: 'bun', antrag: 'UN' }], aufgaben: [] }] });
+  protokoll.tops.unshift({ id: 't0', titel: 'Ganz vorn', beschluesse: [], aufgaben: [], unterpunkte: [] });
+  const nl = roh(k.ergebnisNutzlast(protokoll));
+  assert.ok(nl.punkte.every(p => 'abweichung' in p), 'jeder Punkt trägt abweichung');
+  const pn = nl.punkte.find(p => p.id === 'tn');
+  assert.strictEqual(pn.tagesordnung.titel, 'Neuer TOP', 'Tagesordnungsfelder reisen mit');
+  assert.ok(!('anlagen' in pn.tagesordnung) && !('beschluesse' in pn.tagesordnung) && !('verlauf' in pn.tagesordnung), 'ohne Anlagen und Protokollfelder');
+  assert.strictEqual(nl.punkte.find(p => p.id === 'un').eltern, 'tn', 'Unterpunkt kennt seinen TOP');
+
+  const sm = manager();
+  const bil = k.ergebnisseEinspielen(sm, nl);
+  assert.deepStrictEqual(roh(sm.tops.map(t => t.id)), ['t0', 't1', 'tn', 't2'], 'neue TOPs an der Protokoll-Position');
+  assert.deepStrictEqual(roh(sm.tops[1].unterpunkte.map(u => u.id)), ['u1', 'u9'], 'neuer Unterpunkt unter bekanntem TOP');
+  assert.deepStrictEqual(roh(sm.tops[2].unterpunkte.map(u => u.id)), ['un'], 'neuer Unterpunkt unter neuem TOP');
+  assert.strictEqual(sm.tops[3].abweichung, 'abgesetzt', 'abweichung bekannter TOPs wird übernommen');
+  assert.strictEqual(sm.tops[1].unterpunkte[0].abweichung, 'geaendert', '… auch bei Unterpunkten');
+  const tn = sm.tops[2];
+  assert.strictEqual([tn.titel, tn.beschreibung, tn.kategorie, tn.referent, tn.dauer, tn.abweichung].join('|'), 'Neuer TOP|B|beratung|R|10|neu');
+  assert.deepStrictEqual(roh(tn.anlagen), [], 'Anlagen reisen nicht zurück');
+  assert.strictEqual(tn.beschluesse[0].id + tn.aufgaben[0].id + tn.unterpunkte[0].beschluesse[0].id + sm.tops[1].unterpunkte[1].beschluesse[0].id,
+    'bnanbunbu9', 'Ergebnisse der neuen Punkte kommen an');
+  assert.strictEqual(sm.tops[1].anlagen.length, 1, 'Anlagen bekannter TOPs bleiben');
+  assert.deepStrictEqual(roh(bil.unbekannt), [], 'neue Punkte sind nicht unbekannt');
+  assert.deepStrictEqual(roh(bil.neu), ['TOP 1 Ganz vorn', 'TOP 2.2 Neu unter Eins', 'TOP 3 Neuer TOP', 'TOP 3.1 Neu unter Neu'], 'Bilanz nennt die neuen Punkte');
+
+  /* Alte Datei ohne die neuen Felder: unbekannte Punkte bleiben unbekannt, abweichung unberührt */
+  const alt = manager(); alt.tops[1].abweichung = 'verschoben';
+  const altNl = { teilnahme: {}, punkte: [{ id: 't1', beschluesse: [{ id: 'b' }], aufgaben: [] }, { id: 'zz', beschluesse: [], aufgaben: [] }] };
+  const bilAlt = k.ergebnisseEinspielen(alt, altNl);
+  assert.deepStrictEqual(roh(bilAlt.unbekannt), ['zz']);
+  assert.deepStrictEqual(roh(bilAlt.neu), []);
+  assert.strictEqual(alt.tops.length, 2);
+  assert.strictEqual(alt.tops[1].abweichung, 'verschoben', 'ohne Feld bleibt die Abweichung');
+  assert.strictEqual(alt.tops[0].beschluesse[0].id, 'b');
+  /* Zuordnungskonflikt: u1 liegt lokal unter t1, in der Datei unter t2 */
+  const kon = manager();
+  const konNl = roh(k.ergebnisNutzlast(manager()));
+  konNl.punkte.find(p => p.id === 'u1').eltern = 't2';
+  konNl.punkte.find(p => p.id === 'u1').beschluesse = [{ id: 'bk', antrag: 'K' }];
+  const bilK = k.ergebnisseEinspielen(kon, konNl);
+  assert.deepStrictEqual(roh(bilK.konflikte), ['TOP 1.1 Eins.1: im Protokoll unter anderem TOP'], 'Konflikt gemeldet');
+  assert.strictEqual(kon.tops[0].unterpunkte[0].beschluesse[0].id, 'bk', 'Ergebnis am lokalen Punkt');
+  assert.strictEqual(kon.tops.length + kon.tops[0].unterpunkte.length + kon.tops[1].unterpunkte.length, 3, 'nichts dupliziert');
+  const konAlt = manager();
+  const bilKA = k.ergebnisseEinspielen(konAlt, { teilnahme: {}, punkte: [{ id: 'u1', eltern: 't2', beschluesse: [], aufgaben: [] }] });
+  assert.deepStrictEqual(roh(bilKA.konflikte), [], 'alte Datei ohne tagesordnung: keine Prüfung');
+  assert.deepStrictEqual(roh(k.ergebnisseEinspielen(manager(), roh(k.ergebnisNutzlast(manager()))).konflikte), [], 'ohne Konflikt leer');
+
+  /* Gast-Auszug: Sammelsatz nur mit freigegebenen Punkten */
+  const gs = { tops: [
+    { id: 'g1', abweichung: 'neu', unterpunkte: [{ id: 'g1a' }, { id: 'g1b', abweichung: 'geaendert' }] },
+    { id: 'g2', abweichung: 'abgesetzt', unterpunkte: [] },
+    { id: 'g3', unterpunkte: [{ id: 'g3a', abweichung: 'verschoben' }] }] };
+  assert.strictEqual(k.abweichungenText(gs, { tops: ['g1a', 'g3a'] }),
+    'Die Tagesordnung weicht in folgenden Punkten von der Einladung ab: TOP 1 (neu aufgenommen), TOP 3.1 (verschoben).', 'nur freigegebene, Originalnummern');
+  assert.strictEqual(k.abweichungenText(gs, { tops: ['g1b'] }).includes('TOP 2'), false, 'nicht freigegebener TOP fehlt');
+  assert.strictEqual(k.abweichungenText(gs, { tops: ['g1a'] }).includes('1.2'), false, 'nicht freigegebener Unterpunkt fehlt');
+  assert.strictEqual(k.abweichungenText({ tops: [{ id: 'x', unterpunkte: [] }, { id: 'y', abweichung: 'neu', unterpunkte: [] }] }, { tops: ['x'] }), '', 'ohne Abweichung leer');
+  console.log('OK  Abweichung von der Einladung: Fortschritt, Satz, Rückweg neuer Punkte, alte Dateien');
+}
+
 /* Kategorien sind optional – neue Punkte starten ohne, gelöschte Kategorien fallen auf „ohne" zurück */
 assert.strictEqual(k.neuerTop().kategorie, '', 'neuer TOP startet ohne Kategorie');
 assert.strictEqual(k.neuerUnterpunkt().kategorie, '', 'Unterpunkte haben ein eigenes, leeres Kategoriefeld');
