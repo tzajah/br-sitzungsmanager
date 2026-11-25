@@ -60,7 +60,7 @@ Anwesenheitsliste, Niederschrift) nach den einschlägigen Vorschriften des BetrV
 - **Abweichung von der Einladung**: Im Reiter „Tagesordnung" (beide Module) lässt sich jeder TOP und
   Unterpunkt per Haken „Weicht von der Einladung ab" kennzeichnen – Art: neu aufgenommen (Standard),
   geändert, verschoben oder abgesetzt. Ein Etikett hinter dem Titel zeigt sie in Tagesordnung, Protokoll
-  und Präsentation; abgesetzte Punkte sind durchgestrichen, haben in der Präsentation keine eigene Folie
+  und Präsentation; abgesetzte Punkte sind durchgestrichen, haben in der Präsentation keine eigene Folie (Unterpunkte bekommen jeweils eine eigene Folie)
   und im Protokollmodul keine Eingabefelder (vorhandene Inhalte bleiben gespeichert) und zählen im
   Fortschritt als erledigt. Die Niederschrift nennt die Art hinter dem Titel, lässt bei abgesetzten Punkten
   den Inhalt weg und fasst vor den TOPs zusammen: „Die Tagesordnung weicht in folgenden Punkten von der

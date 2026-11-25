@@ -8,6 +8,9 @@ veröffentlichten Releases).
 ## [Unreleased]
 
 ### Hinzugefügt
+- **Präsentation: ein Unterpunkt pro Folie.** Die TOP-Folie zeigt nur noch eine kompakte Vorschau der
+  Unterpunkt-Titel; jeder nicht abgesetzte Unterpunkt hat eine eigene, groß lesbare Folie mit Kategorie
+  und Beschreibung.
 - **Abweichungen von der Einladung kennzeichnen.** In der Tagesordnung beider Module lässt sich
   je TOP und Unterpunkt „Weicht von der Einladung ab“ anhaken und die Art wählen (neu
   aufgenommen, geändert, verschoben, abgesetzt). Ein Etikett erscheint in Tagesordnung,

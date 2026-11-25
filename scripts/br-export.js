@@ -460,10 +460,7 @@ body[data-theme="dunkel"]{--bg:#0E1211;--fg:#F1F4F2;--dim:#9AA79F;--akz:@AKZ_DUN
   background:var(--fg);color:var(--bg);padding:6px 16px;margin-bottom:14px}
 .top-titel{font-size:76px;font-weight:700;line-height:1.06;letter-spacing:.005em}
 .top-text{margin-top:28px;font-size:30px;line-height:1.42;color:var(--dim)}
-.unter-liste{list-style:none;margin:34px 0 0;display:flex;flex-direction:column;gap:18px}
-.unter-liste li{font-size:40px;display:grid;grid-template-columns:auto 1fr;gap:20px;align-items:baseline}
-.u-nr{color:var(--fg);font-weight:700;border-bottom:4px solid var(--akz);line-height:1.05}
-.u-text{margin-top:10px;font-size:26px;line-height:1.35;color:var(--dim)}
+.top-kontext{font-size:24px;color:var(--dim);margin-bottom:18px;letter-spacing:.04em}
 .abw{display:inline-block;vertical-align:middle;margin-left:.6em;padding:.15em .5em;font-size:max(14px,.42em);font-weight:700;
   letter-spacing:.08em;line-height:1.1;color:var(--akz-fg);background:var(--akz);white-space:nowrap}
 .top-meta{margin-top:38px;font-size:22px;color:var(--dim);text-transform:uppercase;letter-spacing:.12em;
@@ -606,11 +603,8 @@ function praesentationHtml(daten, s) {
       ? '<div class="top-text">' + esc(t.beschreibung).replace(/\n/g, '<br>') + '</div>'
       : '';
     const unter = (t.unterpunkte || []).length
-      ? '<ul class="unter-liste">' + t.unterpunkte.map((u, j) =>
-          '<li><span class="u-nr">' + (i + 1) + '.' + (j + 1) + '</span><span>' + titelAbw(u, esc(u.titel || '(ohne Titel)')) +
-          (kategorieText(u) ? '<div class="u-text">' + esc(kategorieText(u)) + '</div>' : '') +
-          (u.beschreibung ? '<div class="u-text">' + esc(u.beschreibung).replace(/\n/g, '<br>') + '</div>' : '') +
-          '</span></li>').join('') + '</ul>'
+      ? '<ul class="to-unter">' + t.unterpunkte.map((u, j) =>
+          '<li>' + titelAbw(u, (i + 1) + '.' + (j + 1) + '  ' + esc(u.titel || '(ohne Titel)')) + '</li>').join('') + '</ul>'
       : '';
     const m = [];
     if (t.kategorie) m.push(esc(KATEGORIEN[t.kategorie] || t.kategorie));
@@ -621,6 +615,17 @@ function praesentationHtml(daten, s) {
       '<div class="top-nr">TOP ' + (i + 1) + '</div>' +
       '<h2 class="top-titel">' + titelAbw(t, esc(t.titel || '(ohne Titel)')) + '</h2>' +
       besch + unter + meta + '</div></section>');
+    (t.unterpunkte || []).forEach((u, j) => {
+      if (istAbgesetzt(u)) return;
+      const ukat = kategorieText(u);
+      folien.push('<section class="folie"><div class="fit">' + kopf +
+        '<div class="top-kontext">TOP ' + (i + 1) + ' · ' + esc(t.titel || '(ohne Titel)') + '</div>' +
+        '<div class="top-nr">' + (i + 1) + '.' + (j + 1) + '</div>' +
+        '<h2 class="top-titel">' + titelAbw(u, esc(u.titel || '(ohne Titel)')) + '</h2>' +
+        (ukat ? '<div class="top-text">' + esc(ukat) + '</div>' : '') +
+        (u.beschreibung ? '<div class="top-text">' + esc(u.beschreibung).replace(/\n/g, '<br>') + '</div>' : '') +
+        '</div></section>');
+    });
   });
 
   const vermerk = st.vertraulich ? '<div class="vermerk">Vertraulich</div>' : '';

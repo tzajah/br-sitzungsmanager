@@ -2180,8 +2180,8 @@ async function pruefeAbweichung() {
   const erg = await sm.evaluate(`
     (async () => {
       const s = daten.sitzungen[0];
-      s.tops.push(neuerTop({ titel: 'Zusatzpunkt', unterpunkte: [neuerUnterpunkt({ titel: 'Teil' })] }));
-      s.tops.push(neuerTop({ titel: 'Entfällt' }));
+      s.tops.push(neuerTop({ titel: 'Zusatzpunkt', unterpunkte: [neuerUnterpunkt({ titel: 'Teil', beschreibung: 'Teilbeschreibung' }), neuerUnterpunkt({ titel: 'Weg', beschreibung: 'Wegbeschreibung', abweichung: 'abgesetzt' })] }));
+      s.tops.push(neuerTop({ titel: 'Entfällt', unterpunkte: [neuerUnterpunkt({ titel: 'Verwaist' })] }));
       const ohneAbw = { eml: erzeugeEinladungEml(daten, s), text: einladungVolltext(daten, s),
                         pdf: (await erzeugeEinladungPdf(daten, s, {})).length };
       const c = document.createElement('div');
@@ -2237,9 +2237,35 @@ async function pruefeAbweichung() {
   assert.deepStrictEqual(erg.ende, ['', 'neu', 'abgesetzt']);
   assert.ok(erg.leseGesperrt, 'ohne Bearbeitungsrecht nicht bedienbar');
   assert.ok(erg.praes.includes('NEU AUFGENOMMEN') && erg.praes.includes('GEÄNDERT'), 'Präsentation zeigt Etiketten');
-  assert.strictEqual((erg.praes.match(/<section class="folie/g) || []).length, 3, 'Übersicht + 2 TOP-Folien, abgesetzter TOP ohne Folie');
+  assert.strictEqual((erg.praes.match(/<section class="folie/g) || []).length, 4, 'Übersicht + 2 TOP-Folien + 1 Unterpunkt-Folie; abgesetzte Punkte und Unterpunkte abgesetzter TOPs ohne Folie');
+  const folien = erg.praes.split('<section class="folie').slice(1);
+  const topFolie = folien.find(f => f.includes('TOP 2</div>')), upFolie = folien.find(f => f.includes('>2.1</div>'));
+  assert.ok(topFolie && !topFolie.includes('Teilbeschreibung'), 'TOP-Folie ohne Unterpunkt-Beschreibung');
+  assert.ok(topFolie.includes('Teil') && topFolie.includes('to-unter'), 'TOP-Folie mit kompakter Unterpunkt-Vorschau');
+  assert.ok(upFolie && upFolie.includes('TOP 2 · Zusatzpunkt') && upFolie.includes('Teilbeschreibung') && upFolie.includes('GEÄNDERT'), 'Unterpunkt-Folie: Kontextzeile, Beschreibung, Etikett');
+  assert.ok(!erg.praes.includes('>2.2</div>') && !erg.praes.includes('Wegbeschreibung') && !erg.praes.includes('Verwaist</div>'), 'abgesetzter Unterpunkt und Unterpunkt eines abgesetzten TOPs ohne Folie');
   assert.ok(erg.praes.includes('<s>Entfällt</s>'), 'abgesetzter TOP auf der Übersicht durchgestrichen');
   assert.ok(!/TOP 3<\/div>/.test(erg.praes), 'keine Folie „TOP 3“');
+  /* XSS in Folien und Nummerierung nach Auslassungen */
+  const xs = await sm.evaluate(`
+    (() => {
+      const X = '<img src=x onerror=alert(1)>';
+      const s = { nr: '9', art: 'ordentlich', tops: [
+        neuerTop({ titel: 'Weg', abweichung: 'abgesetzt' }),
+        neuerTop({ titel: 'Aktiv' + X, unterpunkte: [
+          neuerUnterpunkt({ titel: 'Weg2', abweichung: 'abgesetzt' }),
+          neuerUnterpunkt({ titel: 'U-A' + X, kategorie: 'Kat' + X, beschreibung: 'Besch' + X }),
+          neuerUnterpunkt({ titel: 'U-B' }) ] }) ] };
+      return praesentationHtml(daten, s);
+    })()
+  `);
+  assert.ok(!xs.includes('<img src=x') && xs.includes('&lt;img src=x onerror=alert(1)&gt;'), 'XSS in TOP/Unterpunkt-Feldern escaped');
+  const xf = xs.split('<section class="folie').slice(1);
+  assert.strictEqual(xf.length, 4, 'Übersicht, TOP 2, 2.2, 2.3 (abgesetzte ohne Folie)');
+  assert.ok(xf.some(f => f.includes('>TOP 2</div>')) && !xf.some(f => f.includes('>TOP 1</div>')), 'aktiver TOP behält Nummer 2');
+  const xa = xf.find(f => f.includes('>2.2</div>')), xb = xf.find(f => f.includes('>2.3</div>'));
+  assert.ok(xa && xb && !xs.includes('>2.1</div>'), 'aktive Unterpunkte heißen 2.2 und 2.3');
+  assert.ok(xa.includes('Kat&lt;img') && xa.includes('Besch&lt;img') && xa.includes('U-A&lt;img'), 'Kategorie, Beschreibung, Titel auf der Unterpunkt-Folie, escaped');
   const emlKlar = mimeTeile(erg.mitAbw.eml).map(t => t.inhalt.toString('utf8')).join('\n');
   for (const [k, inhalt] of [['eml', emlKlar], ['text', erg.mitAbw.text]]) {
     assert.ok(!/abweichend|abgesetzt|neu aufgenommen|geändert/i.test(inhalt), 'Einladung (' + k + ') ohne Kennzeichnung');
