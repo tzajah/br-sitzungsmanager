@@ -3810,6 +3810,154 @@ async function pruefePausenscreen() {
   console.log('OK  Pausenscreen: Option, Einbettung, P/Esc, Admin-Menü');
 }
 
+/* Anhänge in der Präsentation: Knöpfe je PDF/JPG/PNG, Vorschau-Overlay, Zoom, Tasten; Upload nur PDF/JPG/PNG */
+async function pruefePraesAnhaenge() {
+  const browser = await chromium.launch();
+  const fehler = [];
+  const sm = await browser.newPage();
+  sm.on('pageerror', e => fehler.push(e.message));
+  await sm.goto(DATEI('BR-Sitzungsmanager.html'));
+  await sm.waitForFunction('typeof APP_MODUS !== "undefined"', null, { timeout: 5000 });
+  const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+  const PDF = Buffer.from('%PDF-1.4\n%%EOF').toString('base64');
+  const X = '<img src=x onerror=alert(1)>';
+  const html = await sm.evaluate(`
+    (() => {
+      ${AUFBAU}
+      const an = (id, name, mime) => ({ id, name, mime, size: 3 });
+      const sit = { nr: '5', art: 'ordentlich', tops: [
+        neuerTop({ titel: 'Eins', anlagen: [an('p1', 'Vorlage.pdf', 'application/pdf'), an('d1', 'Brief.docx', ''), an('f1', 'ohnebytes.pdf', '')],
+          unterpunkte: [neuerUnterpunkt({ titel: 'Teil', anlagen: [an('b1', 'Foto.JPG', ''), an('b2', ${JSON.stringify(X)} + '.png', 'image/png')] })] }),
+        neuerTop({ titel: 'Zwei' }) ] };
+      const bytes = { p1: { name: 'Vorlage.pdf', mime: 'application/pdf', b64: ${JSON.stringify(PDF)} },
+                      d1: { name: 'Brief.docx', mime: '', b64: 'AAAA' },
+                      b1: { name: 'Foto.JPG', mime: '', b64: ${JSON.stringify(PNG)} },
+                      b2: { name: ${JSON.stringify(X)} + '.png', mime: 'image/png', b64: ${JSON.stringify(PNG)} } };
+      return { mit: praesentationHtml(daten, sit, bytes), ohne: praesentationHtml(daten, sit) };
+    })()
+  `);
+  const folien = html.mit.split('<section class="folie').slice(1);
+  assert.strictEqual(folien.length, 4, 'Übersicht, TOP 1, 1.1, TOP 2');
+  const knoepfe = f => (f.match(/<button class="anhang"/g) || []).length;
+  assert.strictEqual(knoepfe(folien[0]), 0, 'Übersicht ohne Anhang-Knöpfe');
+  assert.strictEqual(knoepfe(folien[1]), 1, 'TOP-Folie: nur das PDF (kein .docx, keine fehlenden Bytes)');
+  assert.ok(folien[1].includes('Vorlage.pdf') && !folien[1].includes('Foto.JPG'), 'Anhänge des Unterpunkts nicht auf der TOP-Folie');
+  assert.strictEqual(knoepfe(folien[2]), 2, 'Unterpunkt-Folie: JPG und PNG');
+  assert.ok(folien[2].includes('Foto.JPG') && !folien[2].includes('Vorlage.pdf'), 'Unterpunkt-Anhänge nur dort');
+  assert.strictEqual(knoepfe(folien[3]), 0);
+  assert.ok(!html.mit.includes('Brief.docx') && !html.mit.includes('ohnebytes'), 'andere Formate / ohne Bytes: nichts');
+  assert.ok(!html.mit.includes('<img src=x') && folien[2].includes('&lt;img src=x onerror=alert(1)&gt;.png'), 'Dateiname escaped');
+  assert.ok(!/<button class="anhang"|id="anhDaten"|id="vorschau"/.test(html.ohne), 'ohne Bytes keine Knöpfe und keine Daten');
+
+  const pg = await browser.newPage({ viewport: { width: 1200, height: 800 } });
+  pg.on('pageerror', e => fehler.push(e.message));
+  await pg.setContent(html.mit);
+  const folie = () => pg.evaluate('document.getElementById("zaehler").textContent');
+  const offen = () => pg.evaluate('!document.getElementById("vorschau").hidden');
+  await pg.keyboard.press('ArrowRight');
+  assert.strictEqual(await folie(), '2 / 4');
+  const vor = await folie();
+  await pg.click('.folie.aktiv .anhang');
+  assert.strictEqual(await folie(), vor, 'Knopfklick blättert nicht');
+  assert.ok(await offen(), 'Knopf öffnet die Vorschau');
+  assert.ok(await pg.evaluate('/^blob:/.test(document.querySelector("#vorschau iframe").src)'), 'PDF: iframe mit blob:-URL');
+  assert.ok((await pg.textContent('#vorschau')).includes('X schließt die Vorschau'), 'Hinweis sichtbar');
+  await pg.mouse.click(600, 400);
+  assert.ok(await offen() && await folie() === vor, 'Linksklick schließt nicht und blättert nicht');
+  await pg.click('#vorschauZu');
+  assert.ok(await offen() && await folie() === vor, 'Klick auf den Hinweis schließt nicht und blättert nicht');
+  await pg.focus('#vorschauZu');
+  await pg.keyboard.press('Enter');
+  await pg.keyboard.press(' ');
+  assert.ok(await offen() && await folie() === vor, 'Enter/Leertaste auf dem Hinweis schließen nicht');
+  const hb = await pg.locator('#vorschauZu').boundingBox();
+  assert.ok(hb.x > 600 && hb.y > 400, 'Hinweis liegt unten rechts');
+  await pg.mouse.click(50, 400);
+  assert.ok(await offen() && await folie() === vor, 'Klick links blättert nicht zurück');
+  for (const k of ['ArrowRight', ' ', 'f', 'd', 'p']) await pg.keyboard.press(k);
+  assert.ok(await offen() && await folie() === vor, 'andere Tasten wirkungslos ');
+  /* Fokus im iframe: kommt zurück ins Deck, damit X wirkt */
+  await pg.evaluate('document.querySelector("#vorschau iframe").focus()');
+  await pg.waitForFunction('document.activeElement && document.activeElement.tagName !== "IFRAME"', null, { timeout: 2000 });
+  await pg.keyboard.press('x');
+  assert.ok(!(await offen()), 'X schließt');
+  assert.ok(await pg.evaluate('!document.querySelector("#vorschau iframe")'), 'iframe entfernt');
+  await pg.keyboard.press('ArrowRight');
+  assert.strictEqual(await folie(), '3 / 4', 'danach blättert das Deck wieder');
+
+  /* Tastatur: fokussierter Anhang-Knopf lässt sich mit Enter öffnen, ohne zu blättern */
+  await pg.focus('.folie.aktiv .anhang');
+  await pg.keyboard.press('Enter');
+  assert.ok(await offen() && await folie() === '3 / 4', 'Enter auf dem Anhang-Knopf öffnet die Vorschau, ohne zu blättern');
+  await pg.keyboard.press('x');
+  assert.ok(!(await offen()));
+
+  /* Bild: Zoom per Mausrad, Cursorpunkt bleibt fest */
+  await pg.click('.folie.aktiv .anhang');
+  assert.ok(await pg.evaluate('/^blob:/.test(document.querySelector("#vorschau img").src)'), 'Bild: img mit blob:-URL');
+  const t0 = await pg.evaluate('document.getElementById("bildZoom").style.transform');
+  await pg.mouse.move(900, 300);
+  await pg.mouse.wheel(0, -300);
+  const t1 = await pg.evaluate('document.getElementById("bildZoom").style.transform');
+  assert.notStrictEqual(t1, t0, 'Mausrad ändert den transform');
+  const sc = parseFloat((t1.match(/scale\(([\d.]+)\)/) || [])[1]);
+  assert.ok(sc > 1 && sc <= 8, 'Zoom über 1x');
+  const pos = t1.match(/translate\((-?[\d.]+)px, ?(-?[\d.]+)px\)/);
+  assert.ok(Math.abs(parseFloat(pos[1]) - 900 * (1 - sc)) < 1 && Math.abs(parseFloat(pos[2]) - 300 * (1 - sc)) < 1, 'Punkt unter dem Cursor bleibt fest');
+  for (let i = 0; i < 40; i++) await pg.mouse.wheel(0, -300);
+  assert.ok(parseFloat((await pg.evaluate('document.getElementById("bildZoom").style.transform')).match(/scale\(([\d.]+)\)/)[1]) <= 8, 'Grenze 8x');
+  await pg.keyboard.press('X');
+  assert.ok(!(await offen()), 'großes X schließt');
+  await pg.keyboard.press('ArrowRight');
+  assert.strictEqual(await folie(), '4 / 4');
+  assert.deepStrictEqual(fehler, [], 'keine Seitenfehler');
+
+  /* Upload: nur PDF/JPG/PNG zu TOPs und Unterpunkten, andere mit Hinweis abgelehnt, Einladungs-Anlagen unberührt */
+  const r = await sm.evaluate(`
+    (async () => {
+      ${AUFBAU}
+      const toasts = []; const orig = zeigeToast; zeigeToast = (t) => toasts.push(t);
+      const feld = document.getElementById('dateiAnlagen'); let accept = null; feld.click = () => { accept = feld.accept; };
+      const top = daten.sitzungen[0].tops[0];
+      const div = document.createElement('div');
+      renderAnlagenWidget(div, top.anlagen, 'x', undefined, true);
+      div.querySelector('[data-tu="neu"]').click();
+      const accTop = accept;
+      const PDFB = '%PDF-1.4 ', PNGB = new Uint8Array([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0]), JPGB = new Uint8Array([0xFF, 0xD8, 0xFF, 0xE0]);
+      const datei = (n, t, inhalt) => new File([inhalt || 'abc'], n, { type: t });
+      const lies = (l, streng) => new Promise(res => dateienEinlesen(l, res, streng));
+      const erg = await lies([datei('a.docx', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'), datei('b.png', 'image/png', PNGB), datei('c.PDF', '', PDFB), datei('d.jpeg', 'image/jpeg', JPGB), datei('e.exe', ''), datei('payload.exe.pdf', 'text/html', '<html><script>1</script>'), datei('fake.png', 'image/png', 'abc'), datei('fake.jpg', 'image/jpeg', PNGB)], true);
+      const kaputt = datei('k.pdf', '', PDFB); kaputt.slice = () => ({ arrayBuffer: () => Promise.reject(new Error('NotReadableError')) });
+      const lesefehler = await lies([kaputt], true);
+      const lose = await lies([datei('a.docx', '')], false);
+      const nurAbgelehnt = await lies([datei('a.docx', '')], true);
+      const einl = document.createElement('div');
+      renderAnlagenWidget(einl, daten.sitzungen[0].anlagenTO, 'x');
+      einl.querySelector('[data-tu="neu"]').click();
+      zeigeToast = orig;
+      return { accTop, erg: erg.map(x => x.name).sort(), lose: lose.length, nurAbgelehnt: nurAbgelehnt.length, toasts, lesefehler: lesefehler.length, accEinl: accept, strengEinl: anlagenStreng };
+    })()
+  `);
+  assert.ok(r.accTop.includes('.pdf') && r.accTop.includes('.png') && r.accTop.includes('image/jpeg') && !r.accTop.includes('docx'), 'accept nennt PDF/JPG/PNG');
+  assert.deepStrictEqual(r.erg, ['b.png', 'c.PDF', 'd.jpeg'], 'nur PDF/JPG/PNG werden aufgenommen');
+  assert.strictEqual(r.nurAbgelehnt, 0, 'nur Unzulässiges: nichts aufgenommen');
+  assert.strictEqual(r.lose, 1, 'ohne Einschränkung (Einladung/Protokoll) bleibt alles erlaubt');
+  assert.strictEqual(r.toasts.filter(t => /abgelehnt – erlaubt sind PDF, JPG und PNG/.test(t)).length, 6, 'Fehler-Toast je abgelehnter Datei (Endung und Dateisignatur)');
+  assert.strictEqual(r.lesefehler, 0, 'Lesefehler: nichts aufgenommen');
+  assert.deepStrictEqual(r.toasts.filter(t => /k\.pdf/.test(t)), ['„k.pdf“ konnte nicht gelesen werden.'], 'Lesefehler: eigener Toast, keine Format-Ablehnung');
+  assert.strictEqual(r.accEinl, '', 'Einladungs-Anlagen ohne accept'); assert.strictEqual(r.strengEinl, false);
+  /* echte Dateiauswahl: .docx abgelehnt, .png in die Liste */
+  await sm.evaluate(`(() => { ${AUFBAU} verkabeln(); window.__liste = daten.sitzungen[0].tops[0].anlagen; document.getElementById('dateiAnlagen').click = () => {};
+    const d = document.createElement('div'); renderAnlagenWidget(d, window.__liste, 'x', undefined, true); d.querySelector('[data-tu="neu"]').click(); })()`);
+  const vorher = await sm.evaluate('window.__liste.length');
+  await sm.setInputFiles('#dateiAnlagen', [{ name: 'x.docx', mimeType: 'application/msword', buffer: Buffer.from('a') }, { name: 'y.png', mimeType: 'image/png', buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64') }]);
+  await sm.waitForFunction('window.__liste.length > ' + vorher, null, { timeout: 3000 });
+  assert.deepStrictEqual(await sm.evaluate('window.__liste.slice(' + vorher + ').map(a => a.name)'), ['y.png'], 'Dateiauswahl: nur die .png kommt an');
+  assert.deepStrictEqual(fehler, [], 'keine Seitenfehler');
+  await browser.close();
+  console.log('OK  Präsentation: Anhänge als Vorschau (PDF/JPG/PNG), Zoom, Tasten; Anlagen-Upload nur PDF/JPG/PNG');
+}
+
 (async () => {
   await pruefe('BR-Sitzungsmanager.html', 'sitzung');
   await pruefe('BR-Protokoll.html', 'protokoll');
@@ -3827,6 +3975,7 @@ async function pruefePausenscreen() {
   await pruefeFormatgleichheit();
   await pruefeUnterpunktKategorieBeteiligungBeginn();
   await pruefeAbweichung();
+  await pruefePraesAnhaenge();
   await pruefeAdminMenue();
   await pruefeEinladungsMail();
   await pruefeAnmeldung();

@@ -8,6 +8,12 @@ veröffentlichten Releases).
 ## [Unreleased]
 
 ### Hinzugefügt
+- **Präsentation: Anhänge als Vorschau.** Auf der Folie eines TOPs bzw. Unterpunkts erscheint für jede
+  PDF-, JPG- oder PNG-Anlage dieses Punkts ein Knopf mit dem Dateinamen; er öffnet die Datei als Vollbild-Vorschau
+  (PDF im Browser-Viewer, Bilder mit Mausrad-Zoom zum Cursor). Die Taste X (oder der Knopf oben rechts) schließt sie;
+  Klicks und andere Tasten blättern währenddessen nicht. Die Dateien werden beim Öffnen der Präsentation eingebettet.
+- **Anlagen zu TOPs und Unterpunkten: nur PDF, JPG, PNG.** Dateiauswahl und Prüfung im Code lehnen andere Formate
+  mit Hinweis ab. Bereits vorhandene Anlagen, Einladungs-/Protokoll-Anlagen und die Dokumentenablage bleiben unberührt.
 - **Präsentation: ein Unterpunkt pro Folie.** Die TOP-Folie zeigt nur noch eine kompakte Vorschau der
   Unterpunkt-Titel; jeder nicht abgesetzte Unterpunkt hat eine eigene, groß lesbare Folie mit Kategorie
   und Beschreibung.

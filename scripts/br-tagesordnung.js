@@ -1,7 +1,16 @@
 'use strict';
 
-function dateienEinlesen(dateiListe, fertig) {
+function dateienEinlesen(dateiListe, fertig, streng) {
   const dateien = Array.from(dateiListe || []);
+  if (streng) {   /* Endung/MIME und Dateisignatur müssen passen */
+    return Promise.all(dateien.map(f => !anlageFormatErlaubt(f) ? 'format' : anlageSignaturOk(f).then(o => o ? 'ok' : 'format', () => 'lesen'))).then(erg => {
+      dateien.forEach((f, i) => {
+        if (erg[i] === 'format') zeigeToast('„' + f.name + '“ abgelehnt – erlaubt sind PDF, JPG und PNG.', 'fehler');
+        else if (erg[i] === 'lesen') zeigeToast('„' + f.name + '“ konnte nicht gelesen werden.', 'fehler');
+      });
+      dateienEinlesen(dateien.filter((f, i) => erg[i] === 'ok'), fertig);
+    });
+  }
   if (!dateien.length) return fertig([]);
   const ergebnisse = [];
   let offen = dateien.length;
@@ -20,7 +29,7 @@ function dateienEinlesen(dateiListe, fertig) {
 }
 
 /* Nur lesend im Protokollmodul: Anlagen-Dateien liegen beim Sitzungsmanager, ein Upload hier käme nirgends an. */
-function renderAnlagenWidget(c, liste, beschriftung, nachAenderung) {
+function renderAnlagenWidget(c, liste, beschriftung, nachAenderung, streng) {
   const nurLesen = !modusHatAnsicht('dokumente');
   const neuZeichnen = () => {
     c.innerHTML =
@@ -61,7 +70,10 @@ function renderAnlagenWidget(c, liste, beschriftung, nachAenderung) {
           speichern(); neuZeichnen();
           if (nachAenderung) nachAenderung();
         };
-        document.getElementById('dateiAnlagen').click();
+        anlagenStreng = !!streng;
+        const feld = document.getElementById('dateiAnlagen');
+        feld.accept = streng ? ANLAGE_ACCEPT : '';
+        feld.click();
       } else if (tu === 'weg') {
         liste.splice(i, 1); speichern(); neuZeichnen(); if (nachAenderung) nachAenderung();
       } else if (tu === 'hoch' && i > 0) {
@@ -183,7 +195,7 @@ function topEditor(s, top, i) {
   });
 
   klappVerdrahten(wrap, top);
-  renderAnlagenWidget(wrap.querySelector('[data-anlagen]'), top.anlagen, 'Anlagen zu diesem TOP');
+  renderAnlagenWidget(wrap.querySelector('[data-anlagen]'), top.anlagen, 'Anlagen zu diesem TOP', undefined, true);
 
   const upBox = document.createElement('div');
   upBox.className = 'unterpunkte-bereich';
@@ -225,7 +237,7 @@ function renderUnterpunkteEditor(container, s, top, i) {
       ukat.value = kategorieOderLeer(u.kategorie);
       ukat.onchange = () => { u.kategorie = ukat.value; speichern(); };
       bindeText(z.querySelector('[data-f="beschreibung"]'), () => u.beschreibung, v => { u.beschreibung = v; });
-      renderAnlagenWidget(z.querySelector('[data-anlagen]'), u.anlagen || (u.anlagen = []), 'Anlagen zu diesem Unterpunkt');
+      renderAnlagenWidget(z.querySelector('[data-anlagen]'), u.anlagen || (u.anlagen = []), 'Anlagen zu diesem Unterpunkt', undefined, true);
       z.querySelectorAll('.up-werkzeuge [data-tu]').forEach(btn => btn.onclick = () => {
         const tu = btn.dataset.tu;
         if (tu === 'weg') {

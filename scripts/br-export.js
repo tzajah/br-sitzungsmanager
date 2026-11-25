@@ -474,6 +474,17 @@ body[data-theme="dunkel"]{--bg:#0E1211;--fg:#F1F4F2;--dim:#9AA79F;--akz:@AKZ_DUN
   color:var(--fg);cursor:pointer}
 .steuer button:hover{border-color:var(--akz);color:var(--akz)}
 .steuer svg{width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:square;stroke-linejoin:miter}
+.anhaenge{margin-top:30px;display:flex;flex-wrap:wrap;gap:10px}
+.anhang{font:inherit;font-size:22px;padding:10px 18px;border:1px solid var(--linie2);background:var(--btn);color:var(--fg);cursor:pointer;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.anhang:hover,.anhang:focus{border-color:var(--akz);color:var(--akz)}
+#vorschau{position:fixed;inset:0;z-index:100;background:#000}
+#vorschau[hidden]{display:none}
+#vorschauBox{position:absolute;inset:0;overflow:hidden}
+#vorschauBox iframe{width:100%;height:100%;border:0;background:#fff}
+#bildZoom{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;transform-origin:0 0}
+#bildZoom img{max-width:100%;max-height:100%;object-fit:contain;user-select:none;-webkit-user-drag:none}
+#vorschauZu{position:absolute;bottom:18px;right:20px;z-index:2;font:inherit;padding:8px 14px;border:1px solid var(--linie2);background:var(--btn);color:var(--fg);cursor:pointer;opacity:.45}
+#vorschauZu:hover,#vorschauZu:focus{opacity:1}
 .hinweis{position:fixed;top:18px;left:50%;transform:translateX(-50%);font-size:15px;color:var(--dim);
   background:var(--btn);border:1px solid var(--linie2);padding:7px 18px;letter-spacing:.08em;text-transform:uppercase;
   transition:opacity .6s ease;z-index:10}
@@ -533,8 +544,48 @@ const PRAES_JS = `
     pause.hidden = pauseZu.hidden = !pauseOffen;
     if(pauseOffen) pauseZu.focus();
   }
+  var vorschau = document.getElementById('vorschau'), vorschauZu = document.getElementById('vorschauZu'), vorschauBox = document.getElementById('vorschauBox');
+  var vorschauOffen = false, vorschauUrl = '', zoomEl = null, zS = 1, zX = 0, zY = 0;
+  var ad = document.getElementById('anhDaten'), anhDaten = ad ? JSON.parse(ad.textContent) : {};
+  function zoomSetzen(){ if(zoomEl) zoomEl.style.transform = 'translate(' + zX + 'px, ' + zY + 'px) scale(' + zS + ')'; }
+  function vorschauSchliessen(){
+    vorschauOffen = false; vorschau.hidden = true; vorschauBox.innerHTML = ''; zoomEl = null;
+    if(vorschauUrl) URL.revokeObjectURL(vorschauUrl);
+    vorschauUrl = '';
+  }
+  function vorschauOeffnen(id){
+    var d = anhDaten[id];
+    if(!d) return;
+    var bin = atob(d.b), arr = new Uint8Array(bin.length);
+    for(var i=0;i<bin.length;i++) arr[i] = bin.charCodeAt(i);
+    vorschauUrl = URL.createObjectURL(new Blob([arr], { type: d.t }));
+    if(d.t === 'application/pdf'){
+      var fr = document.createElement('iframe'); fr.src = vorschauUrl; fr.title = 'Vorschau'; vorschauBox.appendChild(fr);
+    } else {
+      zoomEl = document.createElement('div'); zoomEl.id = 'bildZoom';
+      var im = document.createElement('img'); im.src = vorschauUrl; im.alt = ''; zoomEl.appendChild(im);
+      vorschauBox.appendChild(zoomEl); zS = 1; zX = zY = 0; zoomSetzen();
+    }
+    vorschauOffen = true; vorschau.hidden = false; vorschauZu.focus();
+  }
+  /* Der Zoom hält den Punkt unter dem Cursor fest: neue Verschiebung = Cursor - (Cursor - alt) * neu/alt, begrenzt auf das Bild. */
+  if(vorschauBox) vorschauBox.addEventListener('wheel', function(e){
+    if(!zoomEl) return;
+    e.preventDefault();
+    var r = vorschauBox.getBoundingClientRect(), px = e.clientX - r.left, py = e.clientY - r.top;
+    var s2 = Math.max(1, Math.min(8, zS * Math.exp(-e.deltaY * 0.0015)));
+    zX = Math.max(r.width * (1 - s2), Math.min(0, px - (px - zX) * s2 / zS));
+    zY = Math.max(r.height * (1 - s2), Math.min(0, py - (py - zY) * s2 / zS));
+    zS = s2; zoomSetzen();
+  }, { passive: false });
+  /* Klickt man in den PDF-Viewer, liegt der Fokus im iframe und X käme nicht im Deck an: Fokus zurückholen (Mausrad und Zoom im PDF bleiben möglich). */
+  function fokusZurueck(){ setTimeout(function(){ if(vorschauOffen && document.activeElement !== vorschauZu) vorschauZu.focus(); }, 0); }
+  window.addEventListener('blur', fokusZurueck);
+  document.addEventListener('focusin', fokusZurueck);
   document.addEventListener('keydown', function(e){
     var k = e.key;
+    if(vorschauOffen){ if(k === 'x' || k === 'X') vorschauSchliessen(); e.preventDefault(); return; }
+    if((k === 'Enter' || k === ' ') && e.target.classList && e.target.classList.contains('anhang') && !pauseOffen) return;
     if(pauseOffen){ if((k === 'Enter' || k === ' ') && e.target.tagName === 'BUTTON') return; if(k === 'Escape' || k === 'p' || k === 'P') pauseWechsel(); e.preventDefault(); return; }
     if(k === 'p' || k === 'P'){ pauseWechsel(); return; }
     if(k === 'ArrowRight' || k === ' ' || k === 'PageDown' || k === 'Enter'){ weiter(); e.preventDefault(); }
@@ -545,7 +596,7 @@ const PRAES_JS = `
     else if(k === 'd' || k === 'D'){ themeWechsel(); }
   });
   document.addEventListener('click', function(e){
-    if(pauseOffen || (e.target.closest && e.target.closest('.steuer'))) return;
+    if(pauseOffen || vorschauOffen || (e.target.closest && e.target.closest('.steuer'))) return;
     if(e.clientX < window.innerWidth * 0.33){ zurueck(); } else { weiter(); }
   });
   window.addEventListener('resize', function(){ fit(folien[idx]); });
@@ -557,13 +608,26 @@ const PRAES_JS = `
   if((b = document.getElementById('btnTheme'))) b.onclick = function(e){ e.stopPropagation(); if(pauseOffen) return; themeWechsel(); };
   if((b = document.getElementById('btnPause'))) b.onclick = function(e){ e.stopPropagation(); pauseWechsel(); };
   if(pauseZu) pauseZu.onclick = function(e){ e.stopPropagation(); pauseWechsel(); };
+  if(vorschauZu) vorschauZu.onclick = function(e){ e.stopPropagation(); };
+  Array.prototype.forEach.call(document.querySelectorAll('.anhang'), function(a){
+    a.onclick = function(e){ e.stopPropagation(); if(pauseOffen || vorschauOffen) return; vorschauOeffnen(a.getAttribute('data-anh')); };
+  });
   setTimeout(function(){ var h = document.getElementById('hinweis'); if(h) h.className = 'hinweis weg'; }, 5000);
   zeige(0);
 })();
 `;
 
 /* Nur Nutzertexte werden per esc() eingesetzt; das eingebettete Deck-JS ist statisch (kein XSS-Risiko). */
-function praesentationHtml(daten, s) {
+/* anhang: Map Anlagen-Id -> { name, mime, b64 } (vorab geladen); nur PDF/JPG/PNG mit Bytes bekommen einen Knopf. */
+function praesentationHtml(daten, s, anhang) {
+  const anh = anhang || {}, anhDaten = {};
+  const anhaengeHtml = p => {
+    const k = (p.anlagen || []).filter(a => a && a.id && anh[a.id] && anh[a.id].b64 && anlageFormatErlaubt(a)).map(a => {
+      anhDaten[a.id] = { t: istPdfAnlage(a) ? 'application/pdf' : /png/i.test(a.mime || '') || /\.png$/i.test(a.name || '') ? 'image/png' : 'image/jpeg', b: anh[a.id].b64 };
+      return '<button class="anhang" data-anh="' + esc(a.id) + '" title="Vorschau">' + esc(a.name) + '</button>';
+    });
+    return k.length ? '<div class="anhaenge">' + k.join('') + '</div>' : '';
+  };
   const st = daten.stammdaten || {};
   const logo = st.logo && /^data:image\/(png|jpeg|gif|webp|svg\+xml);base64,[A-Za-z0-9+\/=]+$/.test(st.logo.dataUrl || '') ? st.logo.dataUrl : '';
   const kopfLinks = esc([st.gremium || 'Betriebsrat', st.firma].filter(Boolean).join(' · '));
@@ -614,7 +678,7 @@ function praesentationHtml(daten, s) {
     folien.push('<section class="folie"><div class="fit">' + kopf +
       '<div class="top-nr">TOP ' + (i + 1) + '</div>' +
       '<h2 class="top-titel">' + titelAbw(t, esc(t.titel || '(ohne Titel)')) + '</h2>' +
-      besch + unter + meta + '</div></section>');
+      besch + unter + meta + anhaengeHtml(t) + '</div></section>');
     (t.unterpunkte || []).forEach((u, j) => {
       if (istAbgesetzt(u)) return;
       const ukat = kategorieText(u);
@@ -624,7 +688,7 @@ function praesentationHtml(daten, s) {
         '<h2 class="top-titel">' + titelAbw(u, esc(u.titel || '(ohne Titel)')) + '</h2>' +
         (ukat ? '<div class="top-text">' + esc(ukat) + '</div>' : '') +
         (u.beschreibung ? '<div class="top-text">' + esc(u.beschreibung).replace(/\n/g, '<br>') + '</div>' : '') +
-        '</div></section>');
+        anhaengeHtml(u) + '</div></section>');
     });
   });
 
@@ -645,6 +709,9 @@ function praesentationHtml(daten, s) {
       '<button id="btnWeiter" title="Weiter" aria-label="Weiter"><svg viewBox="0 0 24 24"><polyline points="9 5 16 12 9 19"/></svg></button>' +
       '<button id="btnTheme" title="Hell/Dunkel (D)" aria-label="Hell oder dunkel"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16"/><path d="M12 4v16" /><path d="M12 4h8v16h-8z" fill="currentColor"/></svg></button>' +
       '<button id="btnVoll" title="Vollbild (F)" aria-label="Vollbild"><svg viewBox="0 0 24 24"><polyline points="4 9 4 4 9 4"/><polyline points="15 4 20 4 20 9"/><polyline points="20 15 20 20 15 20"/><polyline points="9 20 4 20 4 15"/></svg></button></div>' +
+    (Object.keys(anhDaten).length
+      ? '<div id="vorschau" hidden><div id="vorschauBox"></div><button id="vorschauZu">X schließt die Vorschau</button></div>' +
+        '<script type="application/json" id="anhDaten">' + JSON.stringify(anhDaten).replace(/</g, '\\u003c') + '<\/script>' : '') +
     '<div class="hinweis" id="hinweis">&#8592; &#8594; blättern · F Vollbild · D Hell/Dunkel' + (pause ? ' · P Pause' : '') + '</div>' +
     (pause ? '<iframe id="pause" sandbox="allow-scripts" title="Pause" hidden></iframe>' +
       '<button id="pauseZu" hidden>Pause beenden</button>' +
@@ -652,11 +719,22 @@ function praesentationHtml(daten, s) {
     '<script>' + PRAES_JS + '<\/script></body></html>';
 }
 
-function oeffnePraesentation(s) {
+async function oeffnePraesentation(s) {
+  /* Das Fenster muss synchron im Klick aufgehen (Popup-Blocker); die Anhang-Bytes werden danach geladen und das Deck hineingeladen. */
+  const w = window.open('', '_blank');
   try {
-    const html = praesentationHtml(daten, s);
+    const anh = {};
+    for (const t of s.tops || []) {
+      for (const p of [t].concat(t.unterpunkte || [])) {
+        for (const a of p.anlagen || []) {
+          if (!a || !a.id || anh[a.id] || !anlageFormatErlaubt(a)) continue;
+          try { const b = await anlageBytes(a); if (b) anh[a.id] = { name: a.name, mime: a.mime || '', b64: bytesZuBase64(b) }; } catch (e) { }
+        }
+      }
+    }
+    const html = praesentationHtml(daten, s, anh);
     const url = URL.createObjectURL(new Blob([html], { type: 'text/html' }));
-    const w = window.open(url, '_blank');
+    if (w) w.location.href = url;
     if (!w) {
       dateiHerunterladen(new Blob([html], { type: 'text/html' }), pdfDateiname('Tagesordnung-Praesentation', s).replace(/\.pdf$/i, '') + '.html');
       zeigeToast('Popup blockiert – Präsentation als Datei gespeichert (im Browser öffnen).', 'fehler');
@@ -666,6 +744,7 @@ function oeffnePraesentation(s) {
     setTimeout(() => URL.revokeObjectURL(url), 60000);
   } catch (e) {
     console.error(e);
+    if (w) w.close();
     zeigeToast('Präsentation konnte nicht erstellt werden: ' + (e && e.message ? e.message : e), 'fehler');
   }
 }
@@ -1605,8 +1684,9 @@ function verkabeln() {
     e.target.value = '';
   };
   document.getElementById('dateiAnlagen').onchange = e => {
-    const cb = anlagenZielCallback; anlagenZielCallback = null;
-    dateienEinlesen(e.target.files, ergebnisse => { if (cb) cb(ergebnisse); });
+    const cb = anlagenZielCallback, streng = anlagenStreng; anlagenZielCallback = null; anlagenStreng = false;
+    e.target.accept = '';
+    dateienEinlesen(e.target.files, ergebnisse => { if (cb) cb(ergebnisse); }, streng);
     e.target.value = '';
   };
   document.getElementById('dateiDokument').onchange = e => {

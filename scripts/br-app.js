@@ -11,7 +11,7 @@ const VERIFIER_KLARTEXT = 'br-sitzungsmanager/verifizierer';
 let daten = null;
 let ui = { sitzungId: null, tab: modusStartReiter(), ansicht: 'sitzung', beschlussFilter: { jahr: '', ergebnis: '', suche: '', tag: '', status: '', vonDatum: '', bisDatum: '' }, aufgabenFilter: { jahr: '', wer: '', suche: '', vonDatum: '', bisDatum: '' }, dokumentFilter: { kategorie: '', sitzungId: '', suche: '' }, dokumentOrdner: null, urlaubMonat: '', sitzungSuche: '', archivAnzeigen: false, speicherFehler: false, zugeklappt: new Set() };
 let speicherTimer = null;
-let anlagenZielCallback = null;
+let anlagenZielCallback = null, anlagenStreng = false;
 
 /* Laufzeit-Sicherheitszustand – wird NIE persistiert. */
 let sitzungsSchluessel = null;   /* Hauptschlüssel MK (AES-GCM CryptoKey), nur im Arbeitsspeicher */

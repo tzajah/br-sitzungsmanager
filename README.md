@@ -171,6 +171,11 @@ Anwesenheitsliste, Niederschrift) nach den einschlägigen Vorschriften des BetrV
   `Pausenscreen.html` aus dem Programmordner wählen (nach Änderungen erneut wählen). Die Präsentation zeigt dann
   einen Knopf „Pause“ (Taste P); P/Esc oder „Pause beenden“ schließt sie. Der Inhalt liegt in den Stammdaten
   (Browser lassen eine Präsentation keine Dateien nachladen) und läuft in einem abgeschotteten Rahmen.
+- **Anhänge in der Präsentation**: Auf der Folie eines TOPs oder Unterpunkts gibt es für jede PDF-/JPG-/PNG-Anlage
+  dieses Punkts einen Knopf mit dem Dateinamen. Er öffnet eine Vollbild-Vorschau (PDF: Viewer des Browsers mit Scrollen
+  und Zoom; Bilder: Mausrad zoomt zur Cursorposition, 1×–8×). Klicks blättern nicht weiter; **X** schließt die Vorschau.
+  Die Dateien werden beim Öffnen in die Präsentation eingebettet (sie ist eine eigenständige Datei). Neue Anlagen zu TOPs
+  und Unterpunkten sind auf PDF, JPG und PNG beschränkt.
 - **Beschluss-Tags**: farbige Schlagworte, im Admin-Menü konfigurierbar, je
   Beschluss zuweisbar, in der Beschluss-Übersicht filterbar und im Export.
 - **Dokument-Ordner**: das Dokumente-Panel gruppiert je Sitzung in Ordnern;

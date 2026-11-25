@@ -501,6 +501,21 @@ function dataUrlZuBytes(dataUrl) {
 function istPdfAnlage(a) {
   return a.mime === 'application/pdf' || /\.pdf$/i.test(a.name || '');
 }
+/* Neue Anlagen zu TOPs/Unterpunkten: nur PDF, JPG, PNG (Vorschau in der Präsentation). */
+const ANLAGE_ACCEPT = '.pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png';
+function anlageFormatErlaubt(f) {
+  const a = { name: f.name, mime: f.type || f.mime };
+  return istPdfAnlage(a) || istBildAnlage(a);
+}
+/* Dateisignatur passend zur Endung (verhindert Umbenennen, z. B. HTML als .pdf). */
+async function anlageSignaturOk(f) {
+  const b = new Uint8Array(await f.slice(0, 1024).arrayBuffer());
+  const a = { name: f.name, mime: f.type || f.mime };
+  const mit = k => k.every((v, i) => b[i] === v);
+  if (istPdfAnlage(a)) return /%PDF-/.test(String.fromCharCode.apply(null, b));
+  if (/png/i.test(a.mime || '') || /\.png$/i.test(a.name || '')) return mit([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]);
+  return mit([0xFF, 0xD8, 0xFF]);
+}
 function istBildAnlage(a) {
   return /^image\/(png|jpeg|jpg)$/i.test(a.mime || '') || /\.(png|jpe?g)$/i.test(a.name || '');
 }
